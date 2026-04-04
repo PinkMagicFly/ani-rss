@@ -6,6 +6,7 @@ import ani.rss.commons.URLUtils;
 import ani.rss.entity.Config;
 import ani.rss.entity.Login;
 import ani.rss.entity.NotificationConfig;
+import ani.rss.entity.RssDownloadRuleTemplate;
 import ani.rss.enums.BgmTokenTypeEnum;
 import ani.rss.enums.SortTypeEnum;
 import ani.rss.service.ClearService;
@@ -117,6 +118,7 @@ public class ConfigUtil {
                 .setRename(true)
                 .setRss(true)
                 .setRssTimeout(20)
+                .setRssDownloadRuleTemplates(new ArrayList<>())
                 .setCustomTags(new ArrayList<>())
                 .setDelayedDownload(0)
                 .setFileExist(false)
@@ -443,6 +445,16 @@ public class ConfigUtil {
         NotificationConfig newNotificationConfig = NotificationConfig.createNotificationConfig();
 
         List<NotificationConfig> notificationConfigList = config.getNotificationConfigList();
+        if (Objects.isNull(notificationConfigList)) {
+            notificationConfigList = new ArrayList<>();
+            config.setNotificationConfigList(notificationConfigList);
+        }
+
+        List<RssDownloadRuleTemplate> rssDownloadRuleTemplates = config.getRssDownloadRuleTemplates();
+        if (Objects.isNull(rssDownloadRuleTemplates)) {
+            rssDownloadRuleTemplates = new ArrayList<>();
+            config.setRssDownloadRuleTemplates(rssDownloadRuleTemplates);
+        }
 
         CopyOptions copyOptions = CopyOptions
                 .create()
@@ -452,6 +464,16 @@ public class ConfigUtil {
 
         for (NotificationConfig notificationConfig : notificationConfigList) {
             BeanUtil.copyProperties(newNotificationConfig, notificationConfig, copyOptions);
+        }
+
+        RssDownloadRuleTemplate newTemplate = new RssDownloadRuleTemplate()
+                .setName("")
+                .setEnable(true)
+                .setUseRegex(true)
+                .setMustContain("")
+                .setMustNotContain("");
+        for (RssDownloadRuleTemplate template : rssDownloadRuleTemplates) {
+            BeanUtil.copyProperties(newTemplate, template, copyOptions);
         }
     }
 

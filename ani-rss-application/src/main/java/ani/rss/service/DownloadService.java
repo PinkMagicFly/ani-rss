@@ -64,6 +64,7 @@ public class DownloadService {
 
         int currentDownloadCount = 0;
         List<Item> items = ItemsUtil.getItems(ani);
+        boolean subgroupChanged = refreshAniSubgroup(ani, items);
 
         ItemsUtil.omit(ani, items);
         log.debug("{} 共 {} 个", title, items.size());
@@ -231,6 +232,11 @@ public class DownloadService {
                 continue;
             }
 
+            String itemSubgroup = StrUtil.blankToDefault(item.getSubgroup(), "");
+            if (StrUtil.isNotBlank(itemSubgroup) && !"未知字幕组".equals(itemSubgroup)) {
+                ani.setSubgroup(itemSubgroup);
+            }
+
             deleteStandbyRss(ani, item);
 
             if (!AniUtil.ANI_LIST.contains(ani)) {
@@ -253,6 +259,8 @@ public class DownloadService {
             ani.setCurrentEpisodeNumber(size);
             // 更新下载时间
             ani.setLastDownloadTime(System.currentTimeMillis());
+            AniUtil.sync();
+        } else if (subgroupChanged) {
             AniUtil.sync();
         }
 
@@ -373,6 +381,37 @@ public class DownloadService {
         }
     }
 
+    private boolean refreshAniSubgroup(Ani ani, List<Item> items) {
+        String currentSubgroup = StrUtil.blankToDefault(ani.getSubgroup(), "");
+        if (StrUtil.isNotBlank(currentSubgroup) && !"未知字幕组".equals(currentSubgroup)) {
+            return false;
+        }
+
+        String subgroup = items.stream()
+                .filter(item -> !Objects.equals(Boolean.FALSE, item.getMaster()))
+                .map(Item::getSubgroup)
+                .filter(StrUtil::isNotBlank)
+                .filter(it -> !"未知字幕组".equals(it))
+                .findFirst()
+                .orElseGet(() -> items.stream()
+                        .map(Item::getSubgroup)
+                        .filter(StrUtil::isNotBlank)
+                        .filter(it -> !"未知字幕组".equals(it))
+                        .findFirst()
+                        .orElse(""));
+
+        if (StrUtil.isBlank(subgroup)) {
+            return false;
+        }
+
+        if (Objects.equals(ani.getSubgroup(), subgroup)) {
+            return false;
+        }
+
+        ani.setSubgroup(subgroup);
+        return true;
+    }
+
     /**
      * 下载
      *
@@ -468,6 +507,10 @@ public class DownloadService {
         }
 
         Ani ani = aniOpt.get();
+        Ani aniRef = findAniRefById(ani.getId()).orElse(null);
+        if (Objects.nonNull(aniRef)) {
+            trackLocalFiles(aniRef, torrentsInfo);
+        }
 
         // 根据标签反向判断出字幕组
         String subgroup = ani.getSubgroup();
@@ -748,6 +791,60 @@ public class DownloadService {
                 })
                 .map(ObjectUtil::clone)
                 .findFirst();
+    }
+
+    public synchronized Optional<Ani> findAniRefById(String id) {
+        return AniUtil.ANI_LIST.stream()
+                .filter(ani -> Objects.equals(ani.getId(), id))
+                .findFirst();
+    }
+
+    public synchronized void trackLocalFiles(Ani ani, TorrentsInfo torrentsInfo) {
+        List<String> names = Optional.ofNullable(torrentsInfo.getFiles())
+                .map(files -> files.get())
+                .orElse(List.of());
+        if (names.isEmpty()) {
+            return;
+        }
+
+        String downloadDir = torrentsInfo.getDownloadDir();
+        long now = System.currentTimeMillis();
+        List<LocalFileRecord> records = Optional.ofNullable(ani.getAutoDeleteLocalFileRecords())
+                .orElseGet(ArrayList::new);
+        ani.setAutoDeleteLocalFileRecords(records);
+
+        boolean changed = false;
+
+        for (String name : names) {
+            if (StrUtil.isBlank(name)) {
+                continue;
+            }
+            String extName = FileUtil.extName(name);
+            if (!FileUtils.isVideoFormat(extName) && !FileUtils.isSubtitleFormat(extName)) {
+                continue;
+            }
+
+            String path = FileUtils.getAbsolutePath(downloadDir + "/" + name);
+            LocalFileRecord record = records.stream()
+                    .filter(it -> Objects.equals(it.getPath(), path))
+                    .findFirst()
+                    .orElse(null);
+            if (Objects.isNull(record)) {
+                records.add(new LocalFileRecord()
+                        .setPath(path)
+                        .setTrackedAt(now));
+                changed = true;
+                continue;
+            }
+            if (!Objects.equals(record.getTrackedAt(), now)) {
+                record.setTrackedAt(now);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            AniUtil.sync();
+        }
     }
 
 }

@@ -128,6 +128,42 @@
         </div>
       </div>
     </el-form-item>
+    <el-form-item label="下载规则模板">
+      <div class="full-width">
+        <div
+            v-for="(item, index) in (props.config.rssDownloadRuleTemplates || [])"
+            :key="index"
+            class="rule-template-card">
+          <div class="rule-template-row">
+            <el-input v-model="item.name" placeholder="规则名称，如 anime-ANI"/>
+            <el-switch v-model="item.enable"/>
+            <el-button bg text type="danger" icon="Delete" @click="removeRuleTemplate(index)">删除</el-button>
+          </div>
+          <div class="rule-template-row">
+            <el-switch v-model="item.useRegex"/>
+            <el-text size="small">使用正则</el-text>
+          </div>
+          <div class="rule-template-column">
+            <el-input
+                v-model="item.mustContain"
+                placeholder="必须包含，支持正则"
+                type="textarea"
+                :autosize="{ minRows: 2 }"/>
+            <el-input
+                v-model="item.mustNotContain"
+                placeholder="禁止包含，支持正则"
+                type="textarea"
+                :autosize="{ minRows: 2 }"/>
+          </div>
+        </div>
+        <el-button bg text icon="Plus" @click="addRuleTemplate">新增规则模板</el-button>
+        <div>
+          <el-text class="mx-1 text-extra-small" size="small">
+            单个订阅可以选择套用其中一套模板；未命中规则的RSS条目将被跳过
+          </el-text>
+        </div>
+      </div>
+    </el-form-item>
   </el-form>
 </template>
 
@@ -136,6 +172,23 @@ import {ElText} from "element-plus";
 import AfdianPrompt from "@/other/AfdianPrompt.vue";
 
 let props = defineProps(['config'])
+
+let addRuleTemplate = () => {
+  if (!props.config.rssDownloadRuleTemplates) {
+    props.config.rssDownloadRuleTemplates = []
+  }
+  props.config.rssDownloadRuleTemplates.push({
+    name: '',
+    enable: true,
+    useRegex: true,
+    mustContain: '',
+    mustNotContain: ''
+  })
+}
+
+let removeRuleTemplate = (index) => {
+  props.config.rssDownloadRuleTemplates.splice(index, 1)
+}
 </script>
 
 <style scoped>
@@ -153,5 +206,25 @@ let props = defineProps(['config'])
 
 .justify-end {
   justify-content: end;
+}
+
+.rule-template-card {
+  border: 1px solid var(--el-border-color);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.rule-template-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.rule-template-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>

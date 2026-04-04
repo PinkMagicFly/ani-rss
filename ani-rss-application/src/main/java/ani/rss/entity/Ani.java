@@ -286,6 +286,58 @@ public class Ani implements Serializable {
     @Schema(description = "上次下载完成时间")
     private Long lastDownloadTime;
 
+    @Schema(description = "上次RSS检查时间")
+    private Long lastRssCheckTime;
+
+    /**
+     * 自定义RSS周计划开关
+     */
+    @Schema(description = "自定义RSS周计划开关")
+    private Boolean customRssScheduleEnable;
+
+    /**
+     * 自定义RSS计划 星期
+     * 1表示周日，2表示周一
+     */
+    @Schema(description = "自定义RSS计划星期 1表示周日，2表示周一")
+    private List<Integer> rssScheduleWeeks;
+
+    /**
+     * 自定义RSS计划时间
+     */
+    @Schema(description = "自定义RSS计划时间 HH:mm")
+    private String rssScheduleTime;
+
+    /**
+     * 上次触发的计划时间戳
+     */
+    @Schema(description = "上次触发的计划时间戳")
+    private Long lastRssScheduleTriggerTime;
+
+    /**
+     * 自动删除本地文件开关
+     */
+    @Schema(description = "自动删除本地文件开关")
+    private Boolean autoDeleteLocalFilesEnable;
+
+    /**
+     * 自动删除本地文件延时 小时
+     */
+    @Schema(description = "自动删除本地文件延时(小时)")
+    private Integer autoDeleteLocalFilesHours;
+
+    /**
+     * 自动删除文件追踪记录
+     */
+    @Schema(description = "自动删除文件追踪记录")
+    private List<LocalFileRecord> autoDeleteLocalFileRecords;
+
+    /**
+     * RSS下载规则模板名称
+     */
+    @Schema(description = "RSS下载规则模板名称")
+    private String rssDownloadRuleName;
+
     /**
      * 自定义上传
      */

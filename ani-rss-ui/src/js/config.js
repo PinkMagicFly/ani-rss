@@ -23,6 +23,7 @@ export let configData = {
     "rename": true,
     "rss": true,
     "rssTimeout": 20,
+    "rssDownloadRuleTemplates": [],
     "fileExist": false,
     "awaitStalledUP": true,
     "delete": false,

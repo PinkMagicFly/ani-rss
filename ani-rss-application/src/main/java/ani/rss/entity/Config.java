@@ -167,6 +167,12 @@ public class Config implements Serializable {
     private Integer rssTimeout;
 
     /**
+     * RSS下载规则模板
+     */
+    @Schema(description = "RSS下载规则模板")
+    private List<RssDownloadRuleTemplate> rssDownloadRuleTemplates;
+
+    /**
      * 文件已下载自动跳过
      */
     @Schema(description = "文件已下载自动跳过")

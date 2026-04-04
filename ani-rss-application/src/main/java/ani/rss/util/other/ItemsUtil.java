@@ -210,6 +210,7 @@ public class ItemsUtil {
             }
 
             Item addNewItem = ObjectUtil.clone(newItem);
+            String resolvedSubgroup = RssDownloadRuleUtil.resolveSubgroup(ani, itemTitle, newItem.getSubgroup());
 
             addNewItem
                     .setEpisode(1.0)
@@ -218,6 +219,7 @@ public class ItemsUtil {
                     .setTorrent(torrent)
                     .setInfoHash(infoHash)
                     .setSize(size)
+                    .setSubgroup(resolvedSubgroup)
                     .setPubDate(pubDate);
 
             Function<String, String> map = s -> {
@@ -251,6 +253,11 @@ public class ItemsUtil {
                     continue;
                 }
             }
+
+            if (!RssDownloadRuleUtil.hit(ani, addNewItem.getTitle())) {
+                continue;
+            }
+
             items.add(addNewItem);
         }
 

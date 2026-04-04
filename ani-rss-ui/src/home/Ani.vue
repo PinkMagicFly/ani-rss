@@ -69,6 +69,59 @@
             <el-button bg icon="EditPen" text @click="standbyRss?.show">管理</el-button>
           </div>
         </el-form-item>
+        <el-form-item label="RSS 计划">
+          <div style="width: 100%;">
+            <div>
+              <el-switch v-model="props.ani.customRssScheduleEnable"/>
+            </div>
+            <div style="display: flex; width: 100%; margin-top: 6px;">
+              <el-select
+                  v-model="props.ani.rssScheduleWeeks"
+                  :disabled="!props.ani.customRssScheduleEnable"
+                  collapse-tags
+                  collapse-tags-tooltip
+                  multiple
+                  placeholder="选择星期"
+                  style="width: 100%;">
+                <el-option :value="1" label="周日"/>
+                <el-option :value="2" label="周一"/>
+                <el-option :value="3" label="周二"/>
+                <el-option :value="4" label="周三"/>
+                <el-option :value="5" label="周四"/>
+                <el-option :value="6" label="周五"/>
+                <el-option :value="7" label="周六"/>
+              </el-select>
+            </div>
+            <div style="display: flex; width: 100%; margin-top: 6px;">
+              <el-time-picker
+                  v-model="props.ani.rssScheduleTime"
+                  :disabled="!props.ani.customRssScheduleEnable"
+                  format="HH:mm"
+                  placeholder="选择时间"
+                  value-format="HH:mm"
+                  style="width: 180px;"/>
+              <div style="width: 8px;"/>
+              <el-text class="mx-1" size="small">
+                开启后在指定星期和时间额外触发RSS检查，并且仍保留全局默认轮询
+              </el-text>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="下载规则模板">
+          <el-select
+              v-model="props.ani.rssDownloadRuleName"
+              clearable
+              filterable
+              placeholder="不使用"
+              style="width: 100%;">
+            <el-option label="不使用" value=""/>
+            <el-option
+                v-for="item in downloadRuleTemplates"
+                :key="item.name"
+                :label="item.name"
+                :value="item.name"/>
+          </el-select>
+        </el-form-item>
         <el-form-item label="日期">
           <div class="form-item-flex">
             <el-date-picker
@@ -217,6 +270,23 @@
           <el-checkbox v-model="props.ani['message']" label="通知"/>
           <el-checkbox v-model="props.ani['completed']" label="完结迁移"/>
         </el-form-item>
+        <el-form-item label="文件删除">
+          <div style="width: 100%;">
+            <div>
+              <el-switch v-model="props.ani.autoDeleteLocalFilesEnable"/>
+            </div>
+            <div style="display: flex; width: 100%;">
+              <el-input-number
+                  v-model="props.ani.autoDeleteLocalFilesHours"
+                  :disabled="!props.ani.autoDeleteLocalFilesEnable"
+                  :min="1"/>
+              <div style="width: 8px;"/>
+              <el-text class="mx-1" size="small">
+                订阅目录下无活动下载任务时，自动删除超过设定时长的视频与字幕，单位小时
+              </el-text>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model:model-value="props.ani.enable"/>
         </el-form-item>
@@ -289,6 +359,7 @@ const mikanRef = ref()
 const tmdbGroupRef = ref()
 
 let standbyRss = ref()
+let downloadRuleTemplates = ref([])
 
 let preview = ref()
 let okLoading = ref(false)
@@ -317,12 +388,21 @@ let match = ref()
 
 onMounted(() => {
   init()
+  loadRuleTemplates()
 })
 
 let scrollbar = ref()
 
 let init = () => {
   scrollbar.value?.setScrollTop(0)
+}
+
+let loadRuleTemplates = () => {
+  http.config()
+      .then(res => {
+        downloadRuleTemplates.value = (res.data.rssDownloadRuleTemplates || [])
+            .filter(it => it?.name)
+      })
 }
 
 let refreshAni = () => {

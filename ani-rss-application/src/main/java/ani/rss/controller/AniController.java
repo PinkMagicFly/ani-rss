@@ -90,6 +90,7 @@ public class AniController extends BaseController {
 
         AniUtil.ANI_LIST.add(ani);
         AniUtil.sync();
+        RssTask.wakeUp();
         Boolean enable = ani.getEnable();
         if (enable) {
             ThreadUtil.execute(() -> {
@@ -188,7 +189,7 @@ public class AniController extends BaseController {
         }
         File torrentDir = TorrentUtil.getTorrentDir(first.get());
 
-        String[] ignoreProperties = new String[]{"currentEpisodeNumber", "lastDownloadTime"};
+        String[] ignoreProperties = new String[]{"currentEpisodeNumber", "lastDownloadTime", "lastRssCheckTime", "lastRssScheduleTriggerTime"};
         BeanUtil.copyProperties(ani, first.get(), ignoreProperties);
 
         File newTorrentDir = TorrentUtil.getTorrentDir(first.get());
@@ -196,6 +197,7 @@ public class AniController extends BaseController {
             FileUtil.move(torrentDir, newTorrentDir.getParentFile(), true);
         }
         AniUtil.sync();
+        RssTask.wakeUp();
 
         log.info("修改订阅 {} {} {}", ani.getTitle(), ani.getUrl(), ani.getId());
         return Result.success("修改成功");
@@ -217,6 +219,7 @@ public class AniController extends BaseController {
         }
 
         AniUtil.sync();
+        RssTask.wakeUp();
         ThreadUtil.execute(() -> {
             for (Ani ani : anis) {
                 File torrentDir = TorrentUtil.getTorrentDir(ani);
@@ -367,7 +370,7 @@ public class AniController extends BaseController {
     public Result<Void> refreshAll() {
         // 未传Body, 刷新所有订阅
         RssTask.sync();
-        ThreadUtil.execute(() -> RssTask.download(new AtomicBoolean(true)));
+        ThreadUtil.execute(() -> RssTask.download(new AtomicBoolean(true), true));
         return Result.success("已开始刷新RSS");
     }
 
@@ -518,7 +521,7 @@ public class AniController extends BaseController {
             String cover = AniUtil.saveJpg(image);
             ani.setCover(cover);
 
-            String[] ignoreProperties = new String[]{"id", "currentEpisodeNumber", "lastDownloadTime"};
+            String[] ignoreProperties = new String[]{"id", "currentEpisodeNumber", "lastDownloadTime", "lastRssCheckTime", "lastRssScheduleTriggerTime"};
             BeanUtil.copyProperties(ani, first.get(), ignoreProperties);
         }
 

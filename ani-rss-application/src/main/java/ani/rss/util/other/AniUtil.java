@@ -16,6 +16,7 @@ import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
 import cn.hutool.crypto.SecureUtil;
@@ -269,6 +270,27 @@ public class AniUtil {
         Assert.notNull(season, "季不能为空");
         Assert.notBlank(title, "标题不能为空");
         Assert.notNull(offset, "集数偏移不能为空");
+
+        Boolean customRssScheduleEnable = ani.getCustomRssScheduleEnable();
+        List<Integer> rssScheduleWeeks = ani.getRssScheduleWeeks();
+        String rssScheduleTime = ani.getRssScheduleTime();
+        if (Boolean.TRUE.equals(customRssScheduleEnable)) {
+            Assert.notEmpty(rssScheduleWeeks, "自定义RSS计划星期不能为空");
+            rssScheduleWeeks.forEach(week -> Assert.isTrue(week >= 1 && week <= 7, "自定义RSS计划星期范围必须在1到7"));
+            Assert.notBlank(rssScheduleTime, "自定义RSS计划时间不能为空");
+            Assert.isTrue(ReUtil.isMatch("^([01]\\d|2[0-3]):[0-5]\\d$", rssScheduleTime), "自定义RSS计划时间格式必须为HH:mm");
+        }
+
+        Boolean autoDeleteLocalFilesEnable = ani.getAutoDeleteLocalFilesEnable();
+        Integer autoDeleteLocalFilesHours = ani.getAutoDeleteLocalFilesHours();
+        if (Boolean.TRUE.equals(autoDeleteLocalFilesEnable)) {
+            Assert.notNull(autoDeleteLocalFilesHours, "自动删除文件延时不能为空");
+            Assert.isTrue(autoDeleteLocalFilesHours > 0, "自动删除文件延时必须大于0小时");
+        }
+
+        if (Objects.isNull(ani.getRssDownloadRuleName())) {
+            ani.setRssDownloadRuleName("");
+        }
     }
 
 
@@ -419,6 +441,15 @@ public class AniUtil {
                 .setOva(false)
                 .setScore(0.0)
                 .setLastDownloadTime(0L)
+                .setLastRssCheckTime(0L)
+                .setCustomRssScheduleEnable(false)
+                .setRssScheduleWeeks(new ArrayList<>())
+                .setRssScheduleTime("20:00")
+                .setLastRssScheduleTriggerTime(0L)
+                .setAutoDeleteLocalFilesEnable(true)
+                .setAutoDeleteLocalFilesHours(2)
+                .setAutoDeleteLocalFileRecords(new ArrayList<>())
+                .setRssDownloadRuleName("")
                 .setImage("")
                 .setThemoviedbName("")
                 .setCustomDownloadPath(false)
@@ -451,7 +482,7 @@ public class AniUtil {
                 .setMessage(true)
                 .setCustomUploadPathTarget("")
                 .setCustomUploadEnable(false)
-                .setCompleted(true)
+                .setCompleted(false)
                 .setCustomCompleted(false)
                 .setCustomCompletedPathTemplate("")
                 .setCustomTags(new ArrayList<>())
