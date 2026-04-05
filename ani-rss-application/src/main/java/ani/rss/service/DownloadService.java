@@ -38,6 +38,9 @@ import java.util.stream.Collectors;
 public class DownloadService {
     private static final Object LOCK = new Object();
 
+    public record DownloadAniResult(int itemCount, int addedCount) {
+    }
+
     @Resource
     private ScrapeService scrapeService;
 
@@ -47,7 +50,7 @@ public class DownloadService {
      * @param ani
      */
     @Synchronized("LOCK")
-    public void downloadAni(Ani ani) {
+    public DownloadAniResult downloadAni(Ani ani) {
         Config config = ConfigUtil.CONFIG;
         Boolean delete = config.getDelete();
         Boolean autoDisabled = config.getAutoDisabled();
@@ -93,6 +96,7 @@ public class DownloadService {
 
         // 实时保存文件
         boolean sync = false;
+        int addedCount = 0;
 
         for (Item item : items) {
             log.debug(JSONUtil.formatJsonStr(GsonStatic.toJson(item)));
@@ -240,12 +244,13 @@ public class DownloadService {
             deleteStandbyRss(ani, item);
 
             if (!AniUtil.ANI_LIST.contains(ani)) {
-                return;
+                return new DownloadAniResult(items.size(), addedCount);
             }
 
             sync = true;
 
             download(ani, item, savePath, saveTorrent);
+            addedCount++;
 
             if (master && !is5) {
                 currentDownloadCount++;
@@ -264,12 +269,14 @@ public class DownloadService {
             AniUtil.sync();
         }
 
+        DownloadAniResult result = new DownloadAniResult(items.size(), addedCount);
+
         if (!autoDisabled) {
-            return;
+            return result;
         }
         Integer totalEpisodeNumber = ani.getTotalEpisodeNumber();
         if (totalEpisodeNumber < 1) {
-            return;
+            return result;
         }
         if (currentDownloadCount >= totalEpisodeNumber) {
             log.info("{} 第 {} 季 共 {} 集 已全部下载完成, 自动停止订阅", title, season, totalEpisodeNumber);
@@ -277,6 +284,7 @@ public class DownloadService {
             ani.setEnable(false);
             AniUtil.sync();
         }
+        return result;
     }
 
     /**

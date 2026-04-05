@@ -30,6 +30,19 @@ public class RssTask implements BaseTask {
     public static final AtomicBoolean download = new AtomicBoolean(false);
     private static final Object SLEEP_MONITOR = new Object();
 
+    enum TriggerType {
+        NONE,
+        FORCE,
+        SCHEDULE,
+        INTERVAL
+    }
+
+    record TriggerDecision(TriggerType type, long scheduleSlotTime) {
+        boolean shouldRun() {
+            return type != TriggerType.NONE;
+        }
+    }
+
     public static void download(AtomicBoolean loop) {
         download(loop, false);
     }
@@ -57,17 +70,21 @@ public class RssTask implements BaseTask {
                     log.debug("{} 未启用", title);
                     continue;
                 }
-                if (!force && !shouldCheckNow(ani)) {
+                long now = System.currentTimeMillis();
+                TriggerDecision triggerDecision = resolveTriggerDecision(ani, force, now);
+                if (!triggerDecision.shouldRun()) {
                     log.debug("{} 未达到RSS触发条件", title);
                     continue;
                 }
                 try {
-                    markCheckTime(ani);
+                    logTriggerStart(ani, triggerDecision);
+                    DownloadService.DownloadAniResult result = downloadService.downloadAni(ani);
+                    markCheckSuccess(ani, triggerDecision, System.currentTimeMillis());
                     sync = true;
-                    downloadService.downloadAni(ani);
+                    logTriggerResult(ani, triggerDecision, result);
                 } catch (Exception e) {
                     String message = ExceptionUtils.getMessage(e);
-                    log.error("{} {}", title, message);
+                    log.error("{} RSS检查失败 {}", title, message);
                     log.error(message, e);
                 }
                 // 避免短时间频繁请求导致流控
@@ -85,68 +102,51 @@ public class RssTask implements BaseTask {
     }
 
     public static boolean shouldCheckNow(Ani ani) {
-        return shouldRunByGlobalInterval(ani) || shouldRunBySchedule(ani);
+        return resolveTriggerDecision(ani, false, System.currentTimeMillis()).shouldRun();
     }
 
     public static boolean shouldRunByGlobalInterval(Ani ani) {
+        return shouldRunByGlobalInterval(ani, System.currentTimeMillis());
+    }
+
+    static boolean shouldRunByGlobalInterval(Ani ani, long now) {
         Config config = ConfigUtil.CONFIG;
         Long lastRssCheckTime = ani.getLastRssCheckTime();
         if (lastRssCheckTime == null || lastRssCheckTime <= 0) {
             return true;
         }
         long nextCheckTime = lastRssCheckTime + Math.max(1, config.getRssSleepMinutes()) * 60_000L;
-        return System.currentTimeMillis() >= nextCheckTime;
+        return now >= nextCheckTime;
     }
 
     public static boolean shouldRunBySchedule(Ani ani) {
-        if (!Boolean.TRUE.equals(ani.getCustomRssScheduleEnable())) {
-            return false;
-        }
-        String scheduleTime = ani.getRssScheduleTime();
-        if (StrUtil.isBlank(scheduleTime)) {
-            return false;
-        }
-        String[] hm = scheduleTime.split(":");
-        if (hm.length != 2) {
-            return false;
-        }
-        Integer hour;
-        Integer minute;
-        try {
-            hour = Integer.parseInt(hm[0]);
-            minute = Integer.parseInt(hm[1]);
-        } catch (Exception e) {
-            return false;
-        }
-        Date now = new Date();
-        int dayOfWeek = DateUtil.dayOfWeek(now);
-        if (!ani.getRssScheduleWeeks().contains(dayOfWeek)) {
-            return false;
-        }
-        Date slot = DateUtil.date()
-                .setField(DateField.HOUR_OF_DAY, hour)
-                .setField(DateField.MINUTE, minute)
-                .setField(DateField.SECOND, 0)
-                .setField(DateField.MILLISECOND, 0);
-        long slotTime = slot.getTime();
-        if (System.currentTimeMillis() < slotTime) {
-            return false;
-        }
-        Long lastTriggerTime = ani.getLastRssScheduleTriggerTime();
-        return lastTriggerTime == null || lastTriggerTime < slotTime;
+        return shouldRunBySchedule(ani, System.currentTimeMillis());
     }
 
-    public static void markCheckTime(Ani ani) {
-        long now = System.currentTimeMillis();
+    static boolean shouldRunBySchedule(Ani ani, long now) {
+        TriggerDecision triggerDecision = resolveTriggerDecision(ani, false, now);
+        return triggerDecision.type() == TriggerType.SCHEDULE;
+    }
+
+    static TriggerDecision resolveTriggerDecision(Ani ani, boolean force, long now) {
+        if (force) {
+            return new TriggerDecision(TriggerType.FORCE, -1L);
+        }
+        long slotTime = currentSlotTime(now, ani);
+        if (slotTime > 0 && shouldRunByScheduleWindow(ani, now, slotTime)) {
+            return new TriggerDecision(TriggerType.SCHEDULE, slotTime);
+        }
+        if (shouldRunByGlobalInterval(ani, now)) {
+            return new TriggerDecision(TriggerType.INTERVAL, -1L);
+        }
+        return new TriggerDecision(TriggerType.NONE, -1L);
+    }
+
+    static void markCheckSuccess(Ani ani, TriggerDecision triggerDecision, long now) {
         ani.setLastRssCheckTime(now);
-        long slotTime = currentSlotTime(now, ani.getRssScheduleTime());
-        if (slotTime <= 0) {
-            return;
+        if (triggerDecision.type() == TriggerType.SCHEDULE && triggerDecision.scheduleSlotTime() > 0) {
+            ani.setLastRssScheduleTriggerTime(triggerDecision.scheduleSlotTime());
         }
-        if (!shouldRunByScheduleWindow(ani, now, slotTime)) {
-            return;
-        }
-        ani.setLastRssScheduleTriggerTime(slotTime);
     }
 
     private static boolean shouldRunByScheduleWindow(Ani ani, long now, long slotTime) {
@@ -168,7 +168,15 @@ public class RssTask implements BaseTask {
         return lastTriggerTime == null || lastTriggerTime < slotTime;
     }
 
-    private static long currentSlotTime(long now, String scheduleTime) {
+    private static long currentSlotTime(long now, Ani ani) {
+        if (!Boolean.TRUE.equals(ani.getCustomRssScheduleEnable())) {
+            return -1;
+        }
+        List<Integer> weeks = ani.getRssScheduleWeeks();
+        if (weeks == null || weeks.isEmpty()) {
+            return -1;
+        }
+        String scheduleTime = ani.getRssScheduleTime();
         if (StrUtil.isBlank(scheduleTime)) {
             return -1;
         }
@@ -176,14 +184,42 @@ public class RssTask implements BaseTask {
         if (hm.length != 2) {
             return -1;
         }
-        int hour = Integer.parseInt(hm[0]);
-        int minute = Integer.parseInt(hm[1]);
+        int hour;
+        int minute;
+        try {
+            hour = Integer.parseInt(hm[0]);
+            minute = Integer.parseInt(hm[1]);
+        } catch (Exception e) {
+            return -1;
+        }
         return DateUtil.date(now)
                 .setField(DateField.HOUR_OF_DAY, hour)
                 .setField(DateField.MINUTE, minute)
                 .setField(DateField.SECOND, 0)
                 .setField(DateField.MILLISECOND, 0)
                 .getTime();
+    }
+
+    private static void logTriggerStart(Ani ani, TriggerDecision triggerDecision) {
+        String title = ani.getTitle();
+        if (triggerDecision.type() == TriggerType.SCHEDULE) {
+            log.info("{} RSS计划触发，开始检查", title);
+            return;
+        }
+        if (triggerDecision.type() == TriggerType.FORCE) {
+            log.info("{} 手动刷新触发，开始检查", title);
+        }
+    }
+
+    private static void logTriggerResult(Ani ani, TriggerDecision triggerDecision, DownloadService.DownloadAniResult result) {
+        String title = ani.getTitle();
+        if (triggerDecision.type() == TriggerType.SCHEDULE) {
+            log.info("{} RSS计划检查完成，识别到 {} 条，新增下载 {} 条", title, result.itemCount(), result.addedCount());
+            return;
+        }
+        if (triggerDecision.type() == TriggerType.FORCE) {
+            log.info("{} 手动刷新完成，识别到 {} 条，新增下载 {} 条", title, result.itemCount(), result.addedCount());
+        }
     }
 
     public static void sync() {
