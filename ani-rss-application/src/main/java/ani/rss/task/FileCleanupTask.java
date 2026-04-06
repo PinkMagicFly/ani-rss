@@ -96,6 +96,9 @@ public class FileCleanupTask implements BaseTask {
                         if (!isSubPath(downloadPath, path)) {
                             continue;
                         }
+                        if (!shouldDeleteLocalFile(file.getName())) {
+                            continue;
+                        }
                         if (activePaths.contains(path)) {
                             continue;
                         }
@@ -150,7 +153,7 @@ public class FileCleanupTask implements BaseTask {
                         continue;
                     }
                     String name = file.getName();
-                    if (!FileUtils.isVideoFormat(name) && !FileUtils.isSubtitleFormat(name)) {
+                    if (!shouldDeleteLocalFile(name)) {
                         records.remove(record);
                         sync = true;
                         continue;
@@ -181,6 +184,10 @@ public class FileCleanupTask implements BaseTask {
         String normalizedParent = FileUtils.getAbsolutePath(parent);
         String normalizedChild = FileUtils.getAbsolutePath(child);
         return normalizedChild.equals(normalizedParent) || normalizedChild.startsWith(normalizedParent + "/");
+    }
+
+    private boolean shouldDeleteLocalFile(String name) {
+        return FileUtils.isVideoFormat(name);
     }
 
     private long getLoopSleepMillis() {
