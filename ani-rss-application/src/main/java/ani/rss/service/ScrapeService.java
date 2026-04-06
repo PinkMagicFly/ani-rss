@@ -99,7 +99,7 @@ public class ScrapeService {
                     if (StrUtil.isBlank(extName)) {
                         return false;
                     }
-                    return FileUtils.isVideoFormat(extName);
+                    return FileUtils.isVideoFormat(extName) || "strm".equalsIgnoreCase(extName);
                 })
                 .max(Comparator.comparingLong(File::length));
 
@@ -236,7 +236,7 @@ public class ScrapeService {
                 continue;
             }
 
-            if (!FileUtils.isVideoFormat(extName)) {
+            if (!FileUtils.isVideoFormat(extName) && !"strm".equalsIgnoreCase(extName)) {
                 // 非视频文件
                 continue;
             }
@@ -253,8 +253,15 @@ public class ScrapeService {
                 continue;
             }
 
-            Integer episodeNumber =
-                    Integer.parseInt(ReUtil.get(StringEnum.SEASON_REG, mainName, 2));
+            String episodeNumberStr = ReUtil.get(StringEnum.SEASON_REG, mainName, 2);
+            if (StrUtil.isBlank(episodeNumberStr)) {
+                continue;
+            }
+            if (episodeNumberStr.contains(".")) {
+                // TMDB 不存在 x.5 集结构，跳过单集元数据但保留整季/整剧刮削
+                continue;
+            }
+            Integer episodeNumber = Integer.parseInt(episodeNumberStr);
             if (!episodeMap.containsKey(episodeNumber)) {
                 // 找不到对应集
                 continue;

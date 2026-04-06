@@ -748,7 +748,7 @@ public class DownloadService {
                         if (StrUtil.isBlank(extName)) {
                             return false;
                         }
-                        return FileUtils.isVideoFormat(extName);
+                        return FileUtils.isVideoFormat(extName) || "strm".equalsIgnoreCase(extName);
                     }
                     return true;
                 })

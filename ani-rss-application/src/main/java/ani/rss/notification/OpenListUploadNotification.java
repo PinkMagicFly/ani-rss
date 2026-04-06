@@ -9,6 +9,7 @@ import ani.rss.entity.web.Header;
 import ani.rss.enums.NotificationStatusEnum;
 import ani.rss.enums.StringEnum;
 import ani.rss.service.DownloadService;
+import ani.rss.service.StrmService;
 import ani.rss.util.basic.HttpReq;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.io.FileUtil;
@@ -206,6 +207,7 @@ public class OpenListUploadNotification implements BaseNotification {
 
     private void upload(String localFilePath, String cloudFilePath) {
         Boolean openListUploadDeleteLocalFile = notificationConfig.getOpenListUploadDeleteLocalFile();
+        StrmService strmService = SpringUtil.getBean(StrmService.class);
 
         // 云端文件列表 存储为MAP便于根据文件名寻找
         Map<String, OpenListFileInfo> cloudFileMap = fileList(cloudFilePath)
@@ -233,6 +235,13 @@ public class OpenListUploadNotification implements BaseNotification {
                 long cloudFileLength = cloudFileMap.get(name)
                         .getSize();
                 if (localFileLength == cloudFileLength) {
+                    if (FileUtils.isVideoFormat(name)) {
+                        boolean generated = strmService.generateForFile(notificationConfig, cloudFilePath, file, false);
+                        if (generated && Boolean.TRUE.equals(openListUploadDeleteLocalFile)) {
+                            log.info("删除本地视频 {}", file);
+                            FileUtil.del(file);
+                        }
+                    }
                     // 文件名与大小一致 跳过上传
                     continue;
                 }
@@ -242,9 +251,12 @@ public class OpenListUploadNotification implements BaseNotification {
 
             uploadFile(file.getAbsolutePath(), cloudFilePath);
 
-            if (openListUploadDeleteLocalFile) {
-                log.info("删除本地文件 {}", file);
-                FileUtil.del(file);
+            if (FileUtils.isVideoFormat(name)) {
+                boolean generated = strmService.generateForFile(notificationConfig, cloudFilePath, file, false);
+                if (generated && Boolean.TRUE.equals(openListUploadDeleteLocalFile)) {
+                    log.info("删除本地视频 {}", file);
+                    FileUtil.del(file);
+                }
             }
         }
     }
