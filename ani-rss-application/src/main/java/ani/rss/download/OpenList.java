@@ -158,11 +158,36 @@ public class OpenList implements BaseDownload {
                 String error = taskInfo.get("error").getAsString();
                 int state = taskInfo
                         .get("state").getAsInt();
+                /*
+                https://github.com/OpenListTeam/OpenList-Frontend/blob/d94691c110bb046465e526323f46ead8ddd83c20/src/lang/en/tasks.json#L14-L25
+
+                "state": {
+                    "0": "Pending",
+                    "1": "Running",
+                    "2": "Succeeded",
+                    "3": "Canceling",
+                    "4": "Canceled",
+                    "5": "Error",
+                    "6": "Failing",
+                    "7": "Failed",
+                    "8": "Waiting for Retry",
+                    "9": "Preparing to Retry"
+                }
+                 */
                 // errored 重试
-                if (state > 5) {
+                if (state >= 5) {
                     // 已到达最大重试次数 5 次, -1 不限制
                     if (alistDownloadRetryNumber > -1) {
                         if (retry >= alistDownloadRetryNumber) {
+                            // bug fix: 新资源下载完成后，OpenList 状态可能未及时刷新
+                            // 此处通过检查文件是否存在来兜底，存在则直接继续后续逻辑
+                            Optional<OpenListFileInfo> first = findFiles(path).stream()
+                                    .filter(openListFileInfo -> FileUtils.isVideoFormat(openListFileInfo.getName()))
+                                    .findFirst();
+                            if (first.isPresent()) {
+                                log.info("资源已下载完毕，OpenList 可能处于卡死状态，此处跳过");
+                                break;
+                            }
                             log.error("离线下载失败 {}", error);
                             return false;
                         }
@@ -192,16 +217,15 @@ public class OpenList implements BaseDownload {
             List<OpenListFileInfo> openListFileInfos = findFiles(path);
 
             // 取大小最大的一个视频文件
-            OpenListFileInfo videoFile = openListFileInfos.stream()
+            Optional<OpenListFileInfo> videoFileOpt = openListFileInfos.stream()
                     .filter(openListFileInfo ->
                             FileUtils.isVideoFormat(openListFileInfo.getName()))
-                    .findFirst()
-                    .orElse(null);
+                    .findFirst();
 
-            if (Objects.isNull(videoFile)) {
+            if (videoFileOpt.isEmpty()) {
                 return false;
             }
-
+            OpenListFileInfo videoFile = videoFileOpt.get();
             List<OpenListFileInfo> subtitleList = openListFileInfos.stream()
                     .filter(openListFileInfo ->
                             FileUtils.isSubtitleFormat(openListFileInfo.getName()))
