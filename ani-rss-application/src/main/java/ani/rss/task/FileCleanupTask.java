@@ -7,6 +7,7 @@ import ani.rss.entity.Config;
 import ani.rss.entity.LocalFileRecord;
 import ani.rss.entity.TorrentsInfo;
 import ani.rss.service.DownloadService;
+import ani.rss.service.StrmService;
 import ani.rss.util.other.AniUtil;
 import ani.rss.util.other.ConfigUtil;
 import ani.rss.util.other.TorrentUtil;
@@ -39,6 +40,9 @@ public class FileCleanupTask implements BaseTask {
 
     @Resource
     private DownloadService downloadService;
+
+    @Resource
+    private StrmService strmService;
 
     @Override
     public void accept(java.util.concurrent.atomic.AtomicBoolean loop) {
@@ -103,8 +107,12 @@ public class FileCleanupTask implements BaseTask {
                         if (lastModified > 0 && lastModified > expireTime) {
                             continue;
                         }
+                        if (preserveStrmLibraryFile(file)) {
+                            continue;
+                        }
 
                         log.info("订阅 {} 已到自动删除时间, 删除文件 {}", ani.getTitle(), file);
+                        strmService.switchToCloudStrm(ani, file);
                         FileUtil.del(file);
                         deletedPaths.add(path);
                         sync = true;
@@ -140,6 +148,7 @@ public class FileCleanupTask implements BaseTask {
 
                     File file = new File(path);
                     if (!file.exists()) {
+                        strmService.switchToCloudStrm(ani, file);
                         records.remove(record);
                         sync = true;
                         continue;
@@ -161,6 +170,7 @@ public class FileCleanupTask implements BaseTask {
                     }
 
                     log.info("订阅 {} 已到自动删除时间, 删除文件 {}", ani.getTitle(), file);
+                    strmService.switchToCloudStrm(ani, file);
                     FileUtil.del(file);
                     records.remove(record);
                     sync = true;
@@ -181,6 +191,14 @@ public class FileCleanupTask implements BaseTask {
         String normalizedParent = FileUtils.getAbsolutePath(parent);
         String normalizedChild = FileUtils.getAbsolutePath(child);
         return normalizedChild.equals(normalizedParent) || normalizedChild.startsWith(normalizedParent + "/");
+    }
+
+    private boolean preserveStrmLibraryFile(File file) {
+        if (!Boolean.TRUE.equals(ConfigUtil.CONFIG.getStrm())) {
+            return false;
+        }
+        String extName = FileUtil.extName(file.getName()).toLowerCase();
+        return List.of("strm", "nfo", "jpg", "jpeg", "png", "webp").contains(extName);
     }
 
     private long getLoopSleepMillis() {

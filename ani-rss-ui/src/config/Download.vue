@@ -122,6 +122,36 @@
         </el-alert>
       </div>
     </el-form-item>
+    <el-form-item label="STRM">
+      <div class="download-path-container">
+        <el-switch v-model:model-value="props.config.strm"/>
+        <el-input
+            v-model:model-value="props.config.strmBaseUrl"
+            :disabled="!props.config.strm"
+            placeholder="播放基础地址, 如 https://www.popopo.icu/dav"
+        />
+        <el-input
+            v-model:model-value="props.config.strmLocalPathPrefix"
+            :disabled="!props.config.strm"
+            placeholder="本地文件系统前缀, 默认 /downloads"
+        />
+        <el-input
+            v-model:model-value="props.config.strmLocalWebDavPathPrefix"
+            :disabled="!props.config.strm"
+            placeholder="本地 WebDAV 路径前缀, 默认 /local"
+        />
+        <el-input
+            v-model:model-value="props.config.strmCloudWebDavPathPrefix"
+            :disabled="!props.config.strm"
+            placeholder="云端 WebDAV 路径前缀, 留空自动使用 OpenList 上传路径"
+        />
+        <el-input
+            v-model:model-value="props.config.strmOutputPathTemplate"
+            :disabled="!props.config.strm"
+            placeholder="STRM 输出位置, 留空则输出到保存位置"
+        />
+      </div>
+    </el-form-item>
     <el-form-item label="自动删除">
       <div>
         <el-switch v-model:model-value="props.config.delete"/>

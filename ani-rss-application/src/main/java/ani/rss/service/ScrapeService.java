@@ -36,6 +36,10 @@ public class ScrapeService {
     @Resource
     private DownloadService downloadService;
 
+    @Lazy
+    @Resource
+    private StrmService strmService;
+
     /**
      * 刮削
      *
@@ -48,6 +52,7 @@ public class ScrapeService {
         Tmdb tmdb = ani.getTmdb();
 
         if (Objects.isNull(tmdb)) {
+            strmService.syncLibrary(ani);
             return;
         }
 
@@ -64,6 +69,8 @@ public class ScrapeService {
         } catch (Exception e) {
             log.error("刮削错误 {}", title);
             log.error(e.getMessage(), e);
+        } finally {
+            strmService.syncLibrary(ani);
         }
     }
 

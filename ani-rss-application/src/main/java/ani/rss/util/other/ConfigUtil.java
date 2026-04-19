@@ -24,6 +24,7 @@ import cn.hutool.core.text.StrFormatter;
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.ZipUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
 import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.system.OsInfo;
@@ -228,6 +229,13 @@ public class ConfigUtil {
                 .setTmdbIdPlexMode(false)
                 .setProxyList(proxyList)
                 .setScrape(false)
+                .setStrm(false)
+                .setStrmBaseUrl("")
+                .setStrmWebDavBaseUrl("")
+                .setStrmLocalPathPrefix("/downloads")
+                .setStrmLocalWebDavPathPrefix("/local")
+                .setStrmCloudWebDavPathPrefix("")
+                .setStrmOutputPathTemplate("")
                 .setReplace(false)
                 .setMaxFileNameLength(0)
                 .setLimitLoginAttempts(true)
@@ -479,7 +487,9 @@ public class ConfigUtil {
                 Config::getDownloadToolHost,
                 Config::getMikanHost,
                 Config::getTmdbApi,
-                Config::getCustomGithubUrl
+                Config::getCustomGithubUrl,
+                Config::getStrmBaseUrl,
+                Config::getStrmWebDavBaseUrl
         );
 
         DynaBean dynaBean = DynaBean.create(config);
@@ -501,7 +511,9 @@ public class ConfigUtil {
         List<Func1<Config, String>> func1List = List.of(
                 Config::getDownloadPathTemplate,
                 Config::getOvaDownloadPathTemplate,
-                Config::getCompletedPathTemplate
+                Config::getCompletedPathTemplate,
+                Config::getStrmLocalPathPrefix,
+                Config::getStrmOutputPathTemplate
         );
 
         DynaBean dynaBean = DynaBean.create(config);
@@ -509,6 +521,9 @@ public class ConfigUtil {
         for (Func1<Config, String> func1 : func1List) {
             String fieldName = LambdaUtil.getFieldName(func1);
             String v = func1.callWithRuntimeException(config);
+            if (StrUtil.isBlank(v)) {
+                continue;
+            }
             v = FileUtils.getAbsolutePath(v);
             dynaBean.set(fieldName, v);
         }

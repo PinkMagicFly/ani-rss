@@ -5,6 +5,7 @@ target/
 
 package-lock.json
 pnpm-lock.yaml
+.pnpm-store/
 
 ### IntelliJ IDEA ###
 .idea

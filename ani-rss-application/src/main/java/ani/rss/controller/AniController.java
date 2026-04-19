@@ -13,6 +13,7 @@ import ani.rss.enums.SortTypeEnum;
 import ani.rss.service.AniService;
 import ani.rss.service.ClearService;
 import ani.rss.service.DownloadService;
+import ani.rss.service.StrmService;
 import ani.rss.task.RssTask;
 import ani.rss.util.other.*;
 import cn.hutool.core.bean.BeanUtil;
@@ -53,6 +54,9 @@ public class AniController extends BaseController {
 
     @Resource
     private DownloadService downloadService;
+
+    @Resource
+    private StrmService strmService;
 
     @Auth
     @Operation(summary = "添加订阅")
@@ -225,6 +229,7 @@ public class AniController extends BaseController {
                 File torrentDir = TorrentUtil.getTorrentDir(ani);
                 FileUtil.del(torrentDir);
                 clearService.clearParentFile(torrentDir);
+                strmService.deleteLibrary(ani);
                 log.info("删除订阅 {} {} {}", ani.getTitle(), ani.getUrl(), ani.getId());
             }
             if (!deleteFiles) {

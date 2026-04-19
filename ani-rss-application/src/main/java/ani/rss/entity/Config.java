@@ -715,6 +715,49 @@ public class Config implements Serializable {
     private Boolean scrape;
 
     /**
+     * STRM 开关
+     */
+    @Schema(description = "STRM 开关")
+    private Boolean strm;
+
+    /**
+     * STRM 播放基础地址
+     */
+    @Schema(description = "STRM 播放基础地址")
+    private String strmBaseUrl;
+
+    /**
+     * STRM WebDAV 基础地址
+     */
+    @Deprecated
+    @Schema(description = "STRM WebDAV 基础地址")
+    private String strmWebDavBaseUrl;
+
+    /**
+     * STRM 本地文件系统前缀
+     */
+    @Schema(description = "STRM 本地文件系统前缀")
+    private String strmLocalPathPrefix;
+
+    /**
+     * STRM 本地 WebDAV 路径前缀
+     */
+    @Schema(description = "STRM 本地 WebDAV 路径前缀")
+    private String strmLocalWebDavPathPrefix;
+
+    /**
+     * STRM 云端 WebDAV 路径前缀
+     */
+    @Schema(description = "STRM 云端 WebDAV 路径前缀")
+    private String strmCloudWebDavPathPrefix;
+
+    /**
+     * STRM 输出路径模版
+     */
+    @Schema(description = "STRM 输出路径模版")
+    private String strmOutputPathTemplate;
+
+    /**
      * 重名的订阅将允许被替换
      */
     @Schema(description = "重名订阅允许替换")

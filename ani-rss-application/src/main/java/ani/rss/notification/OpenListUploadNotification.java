@@ -9,6 +9,7 @@ import ani.rss.entity.web.Header;
 import ani.rss.enums.NotificationStatusEnum;
 import ani.rss.enums.StringEnum;
 import ani.rss.service.DownloadService;
+import ani.rss.service.StrmService;
 import ani.rss.util.basic.HttpReq;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.io.FileUtil;
@@ -122,7 +123,7 @@ public class OpenListUploadNotification implements BaseNotification {
             deleteOldEpisode(localPath, target);
         }
 
-        upload(localPath, target);
+        upload(ani, localPath, target);
 
         return true;
     }
@@ -204,7 +205,7 @@ public class OpenListUploadNotification implements BaseNotification {
         }
     }
 
-    private void upload(String localFilePath, String cloudFilePath) {
+    private void upload(Ani ani, String localFilePath, String cloudFilePath) {
         Boolean openListUploadDeleteLocalFile = notificationConfig.getOpenListUploadDeleteLocalFile();
 
         // 云端文件列表 存储为MAP便于根据文件名寻找
@@ -233,7 +234,8 @@ public class OpenListUploadNotification implements BaseNotification {
                 long cloudFileLength = cloudFileMap.get(name)
                         .getSize();
                 if (localFileLength == cloudFileLength) {
-                    // 文件名与大小一致 跳过上传
+                    // 文件名与大小一致 跳过上传，但 STRM 可以直接切到云端
+                    SpringUtil.getBean(StrmService.class).switchToCloudStrm(ani, file);
                     continue;
                 }
             }
@@ -241,6 +243,7 @@ public class OpenListUploadNotification implements BaseNotification {
             log.info("文件上传: {} => {}", file, cloudFilePath);
 
             uploadFile(file.getAbsolutePath(), cloudFilePath);
+            SpringUtil.getBean(StrmService.class).switchToCloudStrm(ani, file);
 
             if (openListUploadDeleteLocalFile) {
                 log.info("删除本地文件 {}", file);

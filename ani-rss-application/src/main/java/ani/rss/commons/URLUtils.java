@@ -16,7 +16,7 @@ public class URLUtils {
             return "";
         }
 
-        if (!ReUtil.contains("http(s*)://", urlStr)) {
+        if (!ReUtil.contains("^[a-zA-Z][a-zA-Z0-9+.-]*://", urlStr)) {
             urlStr = StrFormatter.format("http://{}", urlStr);
         }
 

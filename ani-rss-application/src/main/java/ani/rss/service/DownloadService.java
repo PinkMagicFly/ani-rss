@@ -19,6 +19,7 @@ import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import lombok.Synchronized;
@@ -546,6 +547,14 @@ public class DownloadService {
                 log.error(e.getMessage(), e);
             }
         }
+
+        try {
+            SpringUtil.getBean(StrmService.class).writeLocalStrm(ani, torrentsInfo);
+        } catch (Exception e) {
+            log.error("STRM 生成失败: {}", ani.getTitle());
+            log.error(e.getMessage(), e);
+        }
+
         String text = StrFormatter.format("{} 下载完成", name);
         if (tags.contains(TorrentsTags.BACK_RSS.getValue())) {
             text = StrFormatter.format("(备用RSS) {}", text);
