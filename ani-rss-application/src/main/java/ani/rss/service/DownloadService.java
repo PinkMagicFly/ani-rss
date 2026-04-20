@@ -670,6 +670,7 @@ public class DownloadService {
 
         downloadPathTemplate = downloadPathTemplate.replace("${season}", String.valueOf(season));
         downloadPathTemplate = downloadPathTemplate.replace("${seasonFormat}", seasonFormat);
+        downloadPathTemplate = replaceWeek(downloadPathTemplate, ani);
 
         String bgmId = BgmUtil.getSubjectId(ani);
         downloadPathTemplate = downloadPathTemplate.replace("${bgmId}", bgmId);
@@ -695,6 +696,33 @@ public class DownloadService {
         }
 
         return FileUtils.getAbsolutePath(downloadPathTemplate);
+    }
+
+    private String replaceWeek(String template, Ani ani) {
+        Integer week = ani.getWeek();
+        String weekValue = Objects.isNull(week) ? "" : String.valueOf(week);
+        String weekName = getWeekName(week);
+
+        template = template.replace("${week}", weekValue);
+        template = template.replace("${weekName}", weekName);
+        template = template.replace("${weekCn}", weekName);
+        return template;
+    }
+
+    private String getWeekName(Integer week) {
+        if (Objects.isNull(week)) {
+            return "未知";
+        }
+        return switch (week) {
+            case 1 -> "星期日";
+            case 2 -> "星期一";
+            case 3 -> "星期二";
+            case 4 -> "星期三";
+            case 5 -> "星期四";
+            case 6 -> "星期五";
+            case 7 -> "星期六";
+            default -> "未知";
+        };
     }
 
 

@@ -148,7 +148,7 @@
         <el-input
             v-model:model-value="props.config.strmOutputPathTemplate"
             :disabled="!props.config.strm"
-            placeholder="STRM 输出位置, 留空则输出到保存位置"
+            placeholder="STRM 输出位置, 如 /kodi-strm/${weekName}/${title}/Season ${season}"
         />
       </div>
     </el-form-item>

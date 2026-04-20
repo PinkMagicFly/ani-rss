@@ -128,7 +128,7 @@ export let configData = {
     "strmLocalPathPrefix": "/downloads",
     "strmLocalWebDavPathPrefix": "/local",
     "strmCloudWebDavPathPrefix": "",
-    "strmOutputPathTemplate": "",
+    "strmOutputPathTemplate": "/kodi-strm/${weekName}/${title}/Season ${season}",
     "notificationConfigList": [],
     "priorityKeywordsEnable": false,
     "priorityKeywords": [],
