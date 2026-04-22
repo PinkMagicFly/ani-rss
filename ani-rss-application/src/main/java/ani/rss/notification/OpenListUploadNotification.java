@@ -234,7 +234,7 @@ public class OpenListUploadNotification implements BaseNotification {
                 long cloudFileLength = cloudFileMap.get(name)
                         .getSize();
                 if (localFileLength == cloudFileLength) {
-                    // 文件名与大小一致 跳过上传，但 STRM 可以直接切到云端
+                    // 文件名与大小一致，确认云端已有完整文件，可直接切到云端
                     SpringUtil.getBean(StrmService.class).switchToCloudStrm(ani, file);
                     continue;
                 }
@@ -242,7 +242,9 @@ public class OpenListUploadNotification implements BaseNotification {
 
             log.info("文件上传: {} => {}", file, cloudFilePath);
 
-            uploadFile(file.getAbsolutePath(), cloudFilePath);
+            if (!uploadFile(file.getAbsolutePath(), cloudFilePath)) {
+                continue;
+            }
             SpringUtil.getBean(StrmService.class).switchToCloudStrm(ani, file);
 
             if (openListUploadDeleteLocalFile) {
@@ -258,15 +260,16 @@ public class OpenListUploadNotification implements BaseNotification {
      * @param localFilePath 本地文件位置
      * @param cloudFilePath 云端文件位置
      */
-    private void uploadFile(String localFilePath, String cloudFilePath) {
+    private boolean uploadFile(String localFilePath, String cloudFilePath) {
         Assert.isTrue(FileUtil.exist(localFilePath), "文件不存在 {}", localFilePath);
 
         if (FileUtil.isDirectory(localFilePath)) {
+            boolean success = true;
             List<File> files = FileUtils.listFileList(localFilePath);
             for (File file : files) {
-                uploadFile(file.getAbsolutePath(), cloudFilePath);
+                success = uploadFile(file.getAbsolutePath(), cloudFilePath) && success;
             }
-            return;
+            return success;
         }
 
         String openListUploadHost = notificationConfig.getOpenListUploadHost();
@@ -277,7 +280,7 @@ public class OpenListUploadNotification implements BaseNotification {
 
         String filename = FileUtil.getName(localFilePath);
 
-        HttpReq
+        return HttpReq
                 .put(url)
                 .timeout(1000 * 60 * 2)
                 .setConfig(httpConfig)
@@ -286,7 +289,7 @@ public class OpenListUploadNotification implements BaseNotification {
                 .header("File-Path", URLUtil.encode(cloudFilePath + "/" + filename))
                 .contentType("application/octet-stream")
                 .body(ResourceUtil.getResourceObj(localFilePath))
-                .then(res -> {
+                .thenFunction(res -> {
                     Assert.isTrue(res.isOk(), "上传失败 {} 状态码:{}", localFilePath, res.getStatus());
                     JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
                     int code = jsonObject.get("code").getAsInt();
@@ -294,6 +297,7 @@ public class OpenListUploadNotification implements BaseNotification {
                     Assert.isTrue(code == 200, "上传失败 {} 状态码:{}", localFilePath, code);
 
                     log.info("OpenList 上传完成 {}", filename);
+                    return true;
                 });
     }
 

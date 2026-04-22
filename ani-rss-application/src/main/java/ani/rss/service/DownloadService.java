@@ -53,25 +53,12 @@ public class DownloadService {
     @Synchronized("LOCK")
     public DownloadAniResult downloadAni(Ani ani) {
         Config config = ConfigUtil.CONFIG;
-        Boolean delete = config.getDelete();
         Boolean autoDisabled = config.getAutoDisabled();
-        Integer downloadCount = config.getDownloadCount();
-        Integer delayedDownload = config.getDelayedDownload();
-        Boolean deleteStandbyRSSOnly = config.getDeleteStandbyRSSOnly();
 
         String title = ani.getTitle();
         Integer season = ani.getSeason();
-        Boolean downloadNew = ani.getDownloadNew();
-        List<Double> notDownload = ani.getNotDownload();
 
         List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
-
-        int currentDownloadCount = 0;
-        List<Item> items = ItemsUtil.getItems(ani);
-        boolean subgroupChanged = refreshAniSubgroup(ani, items);
-
-        ItemsUtil.omit(ani, items);
-        log.debug("{} 共 {} 个", title, items.size());
 
         long count = torrentsInfos
                 .stream()
@@ -93,11 +80,102 @@ public class DownloadService {
 
         String savePath = getDownloadPath(ani);
 
+        List<Item> mainItems;
+        try {
+            mainItems = ItemsUtil.getItems(ani);
+        } catch (Exception e) {
+            String message = ExceptionUtils.getMessage(e);
+            log.error("{} 主RSS检查失败 {}", title, message);
+            log.error(message, e);
+            mainItems = new ArrayList<>();
+        }
+        boolean subgroupChanged = refreshAniSubgroup(ani, mainItems);
+        ItemsUtil.omit(ani, mainItems);
+        log.debug("{} 主RSS共 {} 个", title, mainItems.size());
+
+        List<Item> checkedItems = new ArrayList<>(mainItems);
+        SourceDownloadResult sourceResult = downloadSource(ani, mainItems, torrentsInfos, count, savePath);
+        count = sourceResult.count();
+
+        boolean sync = sourceResult.sync();
+        int addedCount = sourceResult.addedCount();
+        int currentDownloadCount = sourceResult.currentDownloadCount();
+
+        if (addedCount == 0 && config.getStandbyRss()) {
+            List<StandbyRss> standbyRssList = ani.getStandbyRssList();
+            if (Objects.nonNull(standbyRssList)) {
+                for (StandbyRss standbyRss : standbyRssList) {
+                    ThreadUtil.sleep(1000);
+                    try {
+                        List<Item> standbyItems = ItemsUtil.getStandbyItems(ani, standbyRss);
+                        checkedItems.addAll(standbyItems);
+                        log.debug("{} 备用RSS {} 共 {} 个", title, StrUtil.blankToDefault(standbyRss.getLabel(), "未知字幕组"), standbyItems.size());
+                        sourceResult = downloadSource(ani, standbyItems, torrentsInfos, count, savePath);
+                        count = sourceResult.count();
+                        sync = sync || sourceResult.sync();
+                        addedCount += sourceResult.addedCount();
+                        currentDownloadCount += sourceResult.currentDownloadCount();
+                        subgroupChanged = refreshAniSubgroup(ani, standbyItems) || subgroupChanged;
+                        if (sourceResult.addedCount() > 0) {
+                            break;
+                        }
+                    } catch (Exception e) {
+                        String message = ExceptionUtils.getMessage(e);
+                        log.error("{} 备用RSS检查失败 {}", title, message);
+                        log.error(message, e);
+                    }
+                }
+            }
+        }
+
+        if (sync) {
+            int size = ItemsUtil.currentEpisodeNumber(ani, checkedItems);
+            // 更新当前集数
+            ani.setCurrentEpisodeNumber(size);
+            // 更新下载时间
+            ani.setLastDownloadTime(System.currentTimeMillis());
+            AniUtil.sync();
+        } else if (subgroupChanged) {
+            AniUtil.sync();
+        }
+
+        DownloadAniResult result = new DownloadAniResult(checkedItems.size(), addedCount);
+
+        if (!autoDisabled) {
+            return result;
+        }
+        Integer totalEpisodeNumber = ani.getTotalEpisodeNumber();
+        if (totalEpisodeNumber < 1) {
+            return result;
+        }
+        if (currentDownloadCount >= totalEpisodeNumber) {
+            log.info("{} 第 {} 季 共 {} 集 已全部下载完成, 自动停止订阅", title, season, totalEpisodeNumber);
+            NotificationUtil.send(config, ani, StrFormatter.format("{} 订阅已完结", title), NotificationStatusEnum.COMPLETED);
+            ani.setEnable(false);
+            AniUtil.sync();
+        }
+        return result;
+    }
+
+    private record SourceDownloadResult(long count, int currentDownloadCount, int addedCount, boolean sync) {
+    }
+
+    private SourceDownloadResult downloadSource(Ani ani,
+                                                List<Item> items,
+                                                List<TorrentsInfo> torrentsInfos,
+                                                long count,
+                                                String savePath) {
+        Config config = ConfigUtil.CONFIG;
+        Integer downloadCount = config.getDownloadCount();
+        Integer delayedDownload = config.getDelayedDownload();
+        Boolean downloadNew = ani.getDownloadNew();
+        List<Double> notDownload = ani.getNotDownload();
+
         ItemsUtil.procrastinating(ani, items);
 
-        // 实时保存文件
         boolean sync = false;
         int addedCount = 0;
+        int currentDownloadCount = 0;
 
         for (Item item : items) {
             log.debug(JSONUtil.formatJsonStr(GsonStatic.toJson(item)));
@@ -108,12 +186,9 @@ public class DownloadService {
                     .trim().toLowerCase();
 
             Double episode = item.getEpisode();
-            // .5 集
             boolean is5 = ItemsUtil.is5(episode);
 
-            // 已经下载过
             if (torrent.exists()) {
-                log.debug("种子记录已存在 {}", reName);
                 if (master && !is5) {
                     currentDownloadCount++;
                 }
@@ -128,17 +203,14 @@ public class DownloadService {
                 continue;
             }
 
-            // 只下载最新集
             if (downloadNew) {
                 Item newItem = items.get(items.size() - 1);
 
-                // 日期一致也可下载, 防止字幕组同时发多集
                 Date pubDate = item.getPubDate();
                 Date newPubDate = newItem.getPubDate();
                 if (Objects.nonNull(pubDate) && Objects.nonNull(newPubDate)) {
                     String pubDateFormat = DateUtil.format(pubDate, "yyyy-MM-dd");
                     String newPubDateFormat = DateUtil.format(newPubDate, "yyyy-MM-dd");
-                    // 日期不一致则跳过
                     if (!pubDateFormat.equals(newPubDateFormat)) {
                         if (master && !is5) {
                             currentDownloadCount++;
@@ -162,78 +234,30 @@ public class DownloadService {
                 }
             }
 
-            // 仅在主RSS更新后删除备用RSS
-            if (delete && master && deleteStandbyRSSOnly) {
-                TorrentsInfo standbyRSS = torrentsInfos
-                        .stream()
-                        .filter(torrentsInfo -> {
-                            if (!torrentsInfo.getDownloadDir().equals(savePath)) {
-                                return false;
-                            }
-                            if (!ReUtil.contains(StringEnum.SEASON_REG, torrentsInfo.getName())) {
-                                return false;
-                            }
-                            String s = ReUtil.get(StringEnum.SEASON_REG, torrentsInfo.getName(), 0);
-                            if (!s.equals(ReUtil.get(StringEnum.SEASON_REG, reName, 0))) {
-                                return false;
-                            }
-                            List<String> tags = torrentsInfo.getTags();
-                            // 包含 备用RSS 标签或者 无主RSS字幕组信息
-                            return tags.contains(TorrentsTags.BACK_RSS.getValue()) ||
-                                    !tags.contains(ani.getSubgroup());
-                        })
-                        .findFirst()
-                        .orElse(null);
-
-                if (Objects.nonNull(standbyRSS)) {
-                    List<String> tags = standbyRSS.getTags();
-                    if (!tags.contains(TorrentsTags.RENAME.getValue())) {
-                        // 未完成重命名
-                        continue;
-                    }
-                    if (!TorrentUtil.delete(standbyRSS)) {
-                        log.debug("备用RSS可能还未做种完成 {}", standbyRSS.getName());
-                        // 删除失败或者不允许删除
-                        continue;
-                    }
-                    torrentsInfos.remove(standbyRSS);
-                }
-            }
-
-            // 已经下载过
             if (torrentsInfos
                     .stream()
-                    .anyMatch(torrentsInfo ->
-                            // hash 相同
-                            torrentsInfo.getHash().equals(hash))) {
-                log.info("已有下载任务 hash:{} name:{}", hash, reName);
+                    .anyMatch(torrentsInfo -> torrentsInfo.getHash().equals(hash))) {
                 if (master && !is5) {
                     currentDownloadCount++;
                 }
                 continue;
             }
 
-            // 未开启rename不进行检测
             if (itemDownloaded(ani, item, true)) {
-                log.info("本地文件已存在 {}", reName);
                 if (master && !is5) {
                     currentDownloadCount++;
                 }
                 continue;
             }
 
-            // 同时下载数量限制
-            if (downloadCount > 0) {
-                if (count >= downloadCount) {
-                    log.debug("达到同时下载数量限制 {}", downloadCount);
-                    continue;
-                }
+            if (downloadCount > 0 && count >= downloadCount) {
+                log.debug("达到同时下载数量限制 {}", downloadCount);
+                continue;
             }
 
             File saveTorrent = TorrentUtil.saveTorrent(ani, item);
 
             if (!saveTorrent.exists()) {
-                // 种子下载失败
                 continue;
             }
 
@@ -242,50 +266,23 @@ public class DownloadService {
                 ani.setSubgroup(itemSubgroup);
             }
 
-            deleteStandbyRss(ani, item);
-
             if (!AniUtil.ANI_LIST.contains(ani)) {
-                return new DownloadAniResult(items.size(), addedCount);
+                return new SourceDownloadResult(count, currentDownloadCount, addedCount, sync);
             }
 
             sync = true;
 
-            download(ani, item, savePath, saveTorrent);
-            addedCount++;
+            if (download(ani, item, savePath, saveTorrent)) {
+                addedCount++;
 
-            if (master && !is5) {
-                currentDownloadCount++;
+                if (master && !is5) {
+                    currentDownloadCount++;
+                }
+                count++;
             }
-            count++;
         }
 
-        if (sync) {
-            int size = ItemsUtil.currentEpisodeNumber(ani, items);
-            // 更新当前集数
-            ani.setCurrentEpisodeNumber(size);
-            // 更新下载时间
-            ani.setLastDownloadTime(System.currentTimeMillis());
-            AniUtil.sync();
-        } else if (subgroupChanged) {
-            AniUtil.sync();
-        }
-
-        DownloadAniResult result = new DownloadAniResult(items.size(), addedCount);
-
-        if (!autoDisabled) {
-            return result;
-        }
-        Integer totalEpisodeNumber = ani.getTotalEpisodeNumber();
-        if (totalEpisodeNumber < 1) {
-            return result;
-        }
-        if (currentDownloadCount >= totalEpisodeNumber) {
-            log.info("{} 第 {} 季 共 {} 集 已全部下载完成, 自动停止订阅", title, season, totalEpisodeNumber);
-            NotificationUtil.send(config, ani, StrFormatter.format("{} 订阅已完结", title), NotificationStatusEnum.COMPLETED);
-            ani.setEnable(false);
-            AniUtil.sync();
-        }
-        return result;
+        return new SourceDownloadResult(count, currentDownloadCount, addedCount, sync);
     }
 
     /**
@@ -429,7 +426,7 @@ public class DownloadService {
      * @param savePath
      * @param torrentFile
      */
-    public synchronized void download(Ani ani, Item item, String savePath, File torrentFile) {
+    public synchronized boolean download(Ani ani, Item item, String savePath, File torrentFile) {
         ani = ObjectUtil.clone(ani);
 
         String name = item.getReName();
@@ -443,7 +440,7 @@ public class DownloadService {
 
         if (!torrentFile.exists()) {
             log.error("种子下载出现问题 {} {}", name, FileUtils.getAbsolutePath(torrentFile));
-            return;
+            return false;
         }
         ThreadUtil.sleep(1000);
         savePath = FileUtils.getAbsolutePath(savePath);
@@ -460,7 +457,7 @@ public class DownloadService {
         for (int i = 1; i <= downloadRetry; i++) {
             try {
                 if (TorrentUtil.DOWNLOAD.download(ani, item, savePath, torrentFile, ova)) {
-                    return;
+                    return true;
                 }
             } catch (Exception e) {
                 String message = ExceptionUtils.getMessage(e);
@@ -476,6 +473,7 @@ public class DownloadService {
         NotificationUtil.send(ConfigUtil.CONFIG, ani,
                 StrFormatter.format("{} 添加失败，疑似为坏种", name),
                 NotificationStatusEnum.ERROR);
+        return false;
     }
 
     /**
@@ -559,7 +557,14 @@ public class DownloadService {
         if (tags.contains(TorrentsTags.BACK_RSS.getValue())) {
             text = StrFormatter.format("(备用RSS) {}", text);
         }
-        NotificationUtil.send(ConfigUtil.CONFIG, ani, text, NotificationStatusEnum.DOWNLOAD_END);
+        boolean resumeAfterUpload = pauseForUpload(torrentsInfo);
+        try {
+            NotificationUtil.sendAndWait(ConfigUtil.CONFIG, ani, text, NotificationStatusEnum.DOWNLOAD_END);
+        } finally {
+            if (resumeAfterUpload) {
+                resumeAfterUpload(torrentsInfo);
+            }
+        }
 
         String title = ani.getTitle();
 
@@ -568,6 +573,29 @@ public class DownloadService {
         } catch (Exception e) {
             log.error("番剧完结迁移失败 {}", title);
             log.error(e.getMessage(), e);
+        }
+    }
+
+    private boolean pauseForUpload(TorrentsInfo torrentsInfo) {
+        TorrentsInfo.State state = torrentsInfo.getState();
+        if (!List.of(
+                TorrentsInfo.State.queuedUP.name(),
+                TorrentsInfo.State.uploading.name(),
+                TorrentsInfo.State.stalledUP.name()
+        ).contains(state.name())) {
+            return false;
+        }
+        boolean paused = TorrentUtil.pause(torrentsInfo);
+        if (paused) {
+            log.info("上传前暂停 qBittorrent 任务 {}", torrentsInfo.getName());
+        }
+        return paused;
+    }
+
+    private void resumeAfterUpload(TorrentsInfo torrentsInfo) {
+        boolean resumed = TorrentUtil.resume(torrentsInfo);
+        if (resumed) {
+            log.info("上传完成，恢复 qBittorrent 做种 {}", torrentsInfo.getName());
         }
     }
 
@@ -736,6 +764,34 @@ public class DownloadService {
      */
     public Boolean itemDownloaded(Ani ani, Item item, Boolean downloadList) {
         Config config = ConfigUtil.CONFIG;
+        Integer season = ani.getSeason();
+        Boolean ova = ani.getOva();
+        String reName = item.getReName();
+        Double episode = item.getEpisode();
+
+        String downloadPath = getDownloadPath(ani);
+
+        if (SpringUtil.getBean(StrmService.class).hasEpisodeMetadata(ani, item)) {
+            return true;
+        }
+
+        if (downloadList) {
+            List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
+            for (TorrentsInfo torrentsInfo : torrentsInfos) {
+                String downloadDir = torrentsInfo.getDownloadDir();
+                if (!Objects.equals(downloadDir, downloadPath)) {
+                    continue;
+                }
+                String name = torrentsInfo.getName();
+                boolean sameEpisode = sameEpisodeName(ova, season, episode, reName, name);
+                if (!sameEpisode) {
+                    continue;
+                }
+                TorrentUtil.saveTorrent(ani, item);
+                return true;
+            }
+        }
+
         Boolean rename = config.getRename();
         if (!rename) {
             return false;
@@ -750,30 +806,6 @@ public class DownloadService {
         Boolean fileExist = config.getFileExist();
         if (!fileExist) {
             return false;
-        }
-
-        Integer season = ani.getSeason();
-        Boolean ova = ani.getOva();
-        String reName = item.getReName();
-        Double episode = item.getEpisode();
-
-        String downloadPath = getDownloadPath(ani);
-
-        if (downloadList) {
-            List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
-            for (TorrentsInfo torrentsInfo : torrentsInfos) {
-                String name = torrentsInfo.getName();
-                if (!name.equalsIgnoreCase(reName)) {
-                    continue;
-                }
-                String downloadDir = torrentsInfo.getDownloadDir();
-                if (!downloadDir.equals(downloadPath)) {
-                    continue;
-                }
-                log.info("已存在下载任务 {}", reName);
-                TorrentUtil.saveTorrent(ani, item);
-                return true;
-            }
         }
 
         List<File> files = FileUtils.listFileList(downloadPath);
@@ -814,10 +846,36 @@ public class DownloadService {
                 })) {
             // 保存 torrent 下次只校验 torrent 是否存在 ， 可以将config设置到固态硬盘，防止一直唤醒机械硬盘
             TorrentUtil.saveTorrent(ani, item);
-            log.info("本地已存在 {}", reName);
             return true;
         }
         return false;
+    }
+
+    private boolean sameEpisodeName(Boolean ova, Integer season, Double episode, String reName, String name) {
+        if (StrUtil.isBlank(name)) {
+            return false;
+        }
+        if (name.equalsIgnoreCase(reName)) {
+            return true;
+        }
+        if (Boolean.TRUE.equals(ova)) {
+            return false;
+        }
+        String mainName = FileUtil.mainName(name).trim().toUpperCase();
+        if (!ReUtil.contains(StringEnum.SEASON_REG, mainName)) {
+            return false;
+        }
+        String seasonStr = ReUtil.get(StringEnum.SEASON_REG, mainName, 1);
+        String episodeStr = ReUtil.get(StringEnum.SEASON_REG, mainName, 2);
+        if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
+            return false;
+        }
+        try {
+            return Objects.equals(season, Integer.parseInt(seasonStr)) &&
+                    Double.compare(episode, Double.parseDouble(episodeStr)) == 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**

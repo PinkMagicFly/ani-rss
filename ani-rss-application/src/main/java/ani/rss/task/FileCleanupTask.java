@@ -7,7 +7,6 @@ import ani.rss.entity.Config;
 import ani.rss.entity.LocalFileRecord;
 import ani.rss.entity.TorrentsInfo;
 import ani.rss.service.DownloadService;
-import ani.rss.service.StrmService;
 import ani.rss.util.other.AniUtil;
 import ani.rss.util.other.ConfigUtil;
 import ani.rss.util.other.TorrentUtil;
@@ -40,9 +39,6 @@ public class FileCleanupTask implements BaseTask {
 
     @Resource
     private DownloadService downloadService;
-
-    @Resource
-    private StrmService strmService;
 
     @Override
     public void accept(java.util.concurrent.atomic.AtomicBoolean loop) {
@@ -107,14 +103,11 @@ public class FileCleanupTask implements BaseTask {
                         if (lastModified > 0 && lastModified > expireTime) {
                             continue;
                         }
-                        if (preserveStrmLibraryFile(file)) {
+                        if (!isAutoDeletePrimaryFile(file)) {
                             continue;
                         }
-
                         log.info("订阅 {} 已到自动删除时间, 删除文件 {}", ani.getTitle(), file);
-                        strmService.switchToCloudStrm(ani, file);
-                        FileUtil.del(file);
-                        deletedPaths.add(path);
+                        deleteEpisodeFiles(file, activePaths, deletedPaths);
                         sync = true;
                     }
                 }
@@ -148,7 +141,6 @@ public class FileCleanupTask implements BaseTask {
 
                     File file = new File(path);
                     if (!file.exists()) {
-                        strmService.switchToCloudStrm(ani, file);
                         records.remove(record);
                         sync = true;
                         continue;
@@ -170,8 +162,7 @@ public class FileCleanupTask implements BaseTask {
                     }
 
                     log.info("订阅 {} 已到自动删除时间, 删除文件 {}", ani.getTitle(), file);
-                    strmService.switchToCloudStrm(ani, file);
-                    FileUtil.del(file);
+                    deleteEpisodeFiles(file, activePaths, deletedPaths);
                     records.remove(record);
                     sync = true;
                 }
@@ -193,12 +184,50 @@ public class FileCleanupTask implements BaseTask {
         return normalizedChild.equals(normalizedParent) || normalizedChild.startsWith(normalizedParent + "/");
     }
 
-    private boolean preserveStrmLibraryFile(File file) {
-        if (!Boolean.TRUE.equals(ConfigUtil.CONFIG.getStrm())) {
-            return false;
+    private boolean isAutoDeletePrimaryFile(File file) {
+        return FileUtils.isVideoFormat(file.getName());
+    }
+
+    private void deleteEpisodeFiles(File primaryFile, Set<String> activePaths, Set<String> deletedPaths) {
+        File dir = primaryFile.getParentFile();
+        if (Objects.isNull(dir) || !dir.exists() || !dir.isDirectory()) {
+            deleteFile(primaryFile, deletedPaths);
+            return;
         }
-        String extName = FileUtil.extName(file.getName()).toLowerCase();
-        return List.of("strm", "nfo", "jpg", "jpeg", "png", "webp").contains(extName);
+
+        String mainName = FileUtil.mainName(primaryFile);
+        for (File file : FileUtils.listFiles(dir)) {
+            if (!file.isFile()) {
+                continue;
+            }
+            String path = FileUtils.getAbsolutePath(file);
+            if (activePaths.contains(path)) {
+                continue;
+            }
+            if (!isSameEpisodeFile(mainName, file)) {
+                continue;
+            }
+            deleteFile(file, deletedPaths);
+        }
+    }
+
+    private boolean isSameEpisodeFile(String mainName, File file) {
+        String name = file.getName();
+        if (FileUtils.isVideoFormat(name) || FileUtils.isSubtitleFormat(name)) {
+            return Objects.equals(FileUtil.mainName(name), mainName);
+        }
+        String extName = FileUtil.extName(name).toLowerCase();
+        if ("nfo".equals(extName) || "bif".equals(extName)) {
+            return Objects.equals(FileUtil.mainName(name), mainName);
+        }
+        return name.startsWith(mainName + "-thumb.");
+    }
+
+    private void deleteFile(File file, Set<String> deletedPaths) {
+        String path = FileUtils.getAbsolutePath(file);
+        log.info("删除文件 {}", file);
+        FileUtil.del(file);
+        deletedPaths.add(path);
     }
 
     private long getLoopSleepMillis() {

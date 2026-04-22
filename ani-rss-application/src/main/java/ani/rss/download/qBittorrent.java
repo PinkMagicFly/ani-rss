@@ -221,6 +221,20 @@ public class qBittorrent implements BaseDownload {
                 .thenFunction(HttpResponse::isOk);
     }
 
+    public static Boolean stop(TorrentsInfo torrentsInfo, Config config) {
+        String host = config.getDownloadToolHost();
+        boolean b = HttpReq.post(host + "/api/v2/torrents/stop")
+                .form("hashes", torrentsInfo.getHash())
+                .thenFunction(HttpResponse::isOk);
+        if (b) {
+            return true;
+        }
+
+        return HttpReq.post(host + "/api/v2/torrents/pause")
+                .form("hashes", torrentsInfo.getHash())
+                .thenFunction(HttpResponse::isOk);
+    }
+
     @Override
     public List<TorrentsInfo> getTorrentsInfos() {
         String host = config.getDownloadToolHost();
@@ -487,6 +501,16 @@ public class qBittorrent implements BaseDownload {
                     }
                     return ok;
                 });
+    }
+
+    @Override
+    public Boolean pause(TorrentsInfo torrentsInfo) {
+        return stop(torrentsInfo, config);
+    }
+
+    @Override
+    public Boolean resume(TorrentsInfo torrentsInfo) {
+        return start(torrentsInfo, config);
     }
 
     @Override

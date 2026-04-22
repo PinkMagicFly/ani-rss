@@ -16,9 +16,7 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.text.StrFormatter;
-import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.*;
-import cn.hutool.http.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.*;
 
@@ -38,9 +36,7 @@ public class ItemsUtil {
      */
     public static synchronized List<Item> getItems(Ani ani) {
         String url = ani.getUrl();
-
         Config config = ConfigUtil.CONFIG;
-
         String s = HttpReq.get(url)
                 .timeout(config.getRssTimeout() * 1000)
                 .thenFunction(res -> {
@@ -52,33 +48,28 @@ public class ItemsUtil {
                 .stream()
                 .peek(item -> item.setMaster(true))
                 .toList());
+        items.sort(Comparator.comparingDouble(Item::getEpisode));
+        return items;
+    }
 
-        if (!config.getStandbyRss()) {
-            items.sort(Comparator.comparingDouble(Item::getEpisode));
-            return items;
+    public static synchronized List<Item> getStandbyItems(Ani ani, StandbyRss rss) {
+        Config config = ConfigUtil.CONFIG;
+        String s = HttpReq.get(rss.getUrl())
+                .timeout(config.getRssTimeout() * 1000)
+                .thenFunction(res -> {
+                    HttpReq.assertStatus(res);
+                    return res.body();
+                });
+        String subgroup = StrUtil.blankToDefault(rss.getLabel(), "未知字幕组");
+        Ani clone = ObjUtil.clone(ani);
+        clone.setOffset(rss.getOffset());
+        if (Objects.nonNull(rss.getRssDownloadRuleName())) {
+            clone.setRssDownloadRuleName(rss.getRssDownloadRuleName());
         }
-
-        List<StandbyRss> standbyRssList = ani.getStandbyRssList();
-        for (StandbyRss rss : standbyRssList) {
-            ThreadUtil.sleep(1000);
-            s = HttpReq.get(rss.getUrl())
-                    .timeout(config.getRssTimeout() * 1000)
-                    .thenFunction(HttpResponse::body);
-            subgroup = StrUtil.blankToDefault(rss.getLabel(), "未知字幕组");
-            Ani clone = ObjUtil.clone(ani);
-            clone.setOffset(rss.getOffset());
-            items.addAll(ItemsUtil.getItems(clone, s, new Item().setSubgroup(subgroup))
-                    .stream()
-                    .peek(item -> item.setMaster(false))
-                    .toList());
-        }
-        // 多字幕组共存模式
-        Boolean coexist = config.getCoexist();
-        if (coexist) {
-            items = CollUtil.distinct(items, Item::getReName, false);
-        } else {
-            items = CollUtil.distinct(items, it -> it.getEpisode().toString(), false);
-        }
+        List<Item> items = new ArrayList<>(ItemsUtil.getItems(clone, s, new Item().setSubgroup(subgroup))
+                .stream()
+                .peek(item -> item.setMaster(false))
+                .toList());
         items.sort(Comparator.comparingDouble(Item::getEpisode));
         return items;
     }

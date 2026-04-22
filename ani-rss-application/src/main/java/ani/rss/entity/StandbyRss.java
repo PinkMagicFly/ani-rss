@@ -25,4 +25,10 @@ public class StandbyRss implements Serializable {
      */
     @Schema(description = "剧集偏移")
     private Integer offset;
+
+    /**
+     * RSS下载规则模板名称
+     */
+    @Schema(description = "RSS下载规则模板名称")
+    private String rssDownloadRuleName;
 }

@@ -3,12 +3,15 @@ package ani.rss.service;
 import ani.rss.commons.FileUtils;
 import ani.rss.entity.Ani;
 import ani.rss.entity.Config;
+import ani.rss.entity.Item;
 import ani.rss.entity.NotificationConfig;
 import ani.rss.entity.TorrentsInfo;
+import ani.rss.enums.StringEnum;
 import ani.rss.enums.NotificationTypeEnum;
 import ani.rss.util.other.ConfigUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.ObjectUtil;
+import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
 import jakarta.annotation.Resource;
@@ -100,16 +103,47 @@ public class StrmService {
         if (!enabled() || Objects.isNull(ani)) {
             return;
         }
-        File output = getLibraryDeleteDir(ani);
-        if (Objects.isNull(output)) {
+        File source = getLibrarySeasonDir(ani);
+        if (Objects.isNull(source)) {
             return;
         }
-        if (!output.exists()) {
+        if (!source.exists()) {
             return;
         }
-        log.info("删除 STRM 媒体库目录 {}", output);
-        FileUtil.del(output);
-        deleteEmptyParents(output.getParentFile());
+        File target = getPastSeasonArchiveDir(ani);
+        if (Objects.isNull(target)) {
+            return;
+        }
+        if (Objects.equals(FileUtils.getAbsolutePath(source), FileUtils.getAbsolutePath(target))) {
+            return;
+        }
+        if (target.exists()) {
+            FileUtil.del(target);
+        }
+        FileUtil.mkParentDirs(target);
+        log.info("归档 STRM 媒体库目录 {} => {}", source, target);
+        FileUtil.move(source, target, true);
+        deleteEmptyParents(source.getParentFile());
+    }
+
+    public boolean hasEpisodeMetadata(Ani ani, Item item) {
+        if (!enabled() || Objects.isNull(ani) || Objects.isNull(item)) {
+            return false;
+        }
+        String episodeKey = episodeKey(item.getReName());
+        if (StrUtil.isBlank(episodeKey)) {
+            return false;
+        }
+        File archiveDir = getPastSeasonArchiveDir(ani);
+        String archivePath = Objects.isNull(archiveDir) ? "" : FileUtils.getAbsolutePath(archiveDir);
+        return List.of(getOutputDir(ani), archivePath)
+                .stream()
+                .filter(StrUtil::isNotBlank)
+                .map(File::new)
+                .filter(file -> file.exists() && file.isDirectory())
+                .flatMap(file -> FileUtil.loopFiles(file, this::isStrmEpisodeMetadata).stream())
+                .map(file -> episodeKey(file.getName()))
+                .anyMatch(episodeKey::equals);
     }
 
     private boolean enabled() {
@@ -183,7 +217,47 @@ public class StrmService {
         return List.of("nfo", "jpg", "jpeg", "png", "webp").contains(extName);
     }
 
-    private File getLibraryDeleteDir(Ani ani) {
+    private boolean isStrmEpisodeMetadata(File file) {
+        if (!file.isFile()) {
+            return false;
+        }
+        String extName = FileUtil.extName(file.getName()).toLowerCase();
+        if (!List.of("strm", "nfo", "jpg", "jpeg", "png", "webp").contains(extName)) {
+            return false;
+        }
+        return StrUtil.isNotBlank(episodeKey(file.getName()));
+    }
+
+    private String episodeKey(String name) {
+        String mainName = FileUtil.mainName(StrUtil.blankToDefault(name, "")).trim().toUpperCase();
+        if (!ReUtil.contains(StringEnum.SEASON_REG, mainName)) {
+            return "";
+        }
+        String season = ReUtil.get(StringEnum.SEASON_REG, mainName, 1);
+        String episode = ReUtil.get(StringEnum.SEASON_REG, mainName, 2);
+        if (StrUtil.isBlank(season) || StrUtil.isBlank(episode)) {
+            return "";
+        }
+        try {
+            return "S" + String.format("%02d", Integer.parseInt(season)) + "E" + formatEpisode(episode);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private String formatEpisode(String episode) {
+        try {
+            double value = Double.parseDouble(episode);
+            if (value == (int) value) {
+                return String.format("%02d", (int) value);
+            }
+            return String.valueOf(value).replace(".", "_");
+        } catch (Exception e) {
+            return episode.replace(".", "_");
+        }
+    }
+
+    private File getLibrarySeasonDir(Ani ani) {
         String outputDir = getOutputDir(ani);
         if (StrUtil.isBlank(outputDir)) {
             return null;
@@ -197,21 +271,41 @@ public class StrmService {
 
         String rootPath = FileUtils.getAbsolutePath(libraryRoot);
         String outputPath = FileUtils.getAbsolutePath(output);
-        if (!isSubPath(rootPath, outputPath)) {
+        if (!isSubPath(rootPath, outputPath) || Objects.equals(rootPath, outputPath)) {
             return output;
         }
-        if (Objects.equals(rootPath, outputPath)) {
+        return output;
+    }
+
+    private File getPastSeasonArchiveDir(Ani ani) {
+        String libraryRoot = getLibraryRoot();
+        if (StrUtil.isBlank(libraryRoot)) {
+            log.warn("STRM 输出路径模版为空，跳过往季归档 {}", ani.getTitle());
             return null;
         }
-
-        File parent = output.getParentFile();
-        if (Objects.nonNull(parent)) {
-            String parentPath = FileUtils.getAbsolutePath(parent);
-            if (!Objects.equals(rootPath, parentPath) && isSubPath(rootPath, parentPath)) {
-                return parent;
-            }
+        String relativePath = getDownloadRelativePath(ani);
+        if (StrUtil.isBlank(relativePath)) {
+            return null;
         }
-        return output;
+        return new File(new File(libraryRoot, "往季"), relativePath);
+    }
+
+    private String getDownloadRelativePath(Ani ani) {
+        String downloadPath = downloadService.getDownloadPath(ani);
+        if (StrUtil.isBlank(downloadPath)) {
+            return "";
+        }
+        String downloadRoot = StrUtil.blankToDefault(ConfigUtil.CONFIG.getStrmLocalPathPrefix(), inferLocalPathPrefix());
+        if (StrUtil.isBlank(downloadRoot)) {
+            return new File(downloadPath).getName();
+        }
+
+        String rootPath = FileUtils.getAbsolutePath(downloadRoot);
+        String path = FileUtils.getAbsolutePath(downloadPath);
+        if (!isSubPath(rootPath, path) || Objects.equals(rootPath, path)) {
+            return new File(path).getName();
+        }
+        return FileUtils.normalize(StrUtil.removePrefix(path.substring(rootPath.length()), "/"));
     }
 
     private void deleteEmptyParents(File dir) {

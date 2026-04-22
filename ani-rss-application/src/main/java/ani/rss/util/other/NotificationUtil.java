@@ -49,11 +49,25 @@ public class NotificationUtil {
      * @param notificationStatusEnum
      */
     public static synchronized void send(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
+        List<NotificationTask> tasks = getNotificationTasks(config, ani, text, notificationStatusEnum);
+        for (NotificationTask task : tasks) {
+            EXECUTOR_SERVICE.execute(() -> execute(task));
+        }
+    }
+
+    public static synchronized void sendAndWait(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
+        List<NotificationTask> tasks = getNotificationTasks(config, ani, text, notificationStatusEnum);
+        for (NotificationTask task : tasks) {
+            execute(task);
+        }
+    }
+
+    private static List<NotificationTask> getNotificationTasks(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
         Boolean isMessage = ani.getMessage();
 
         if (!isMessage) {
             // 未开启此订阅通知
-            return;
+            return List.of();
         }
 
         List<NotificationConfig> notificationConfigList = config.getNotificationConfigList();
@@ -62,6 +76,7 @@ public class NotificationUtil {
                 .sorted(Comparator.comparingLong(NotificationConfig::getSort))
                 .toList();
 
+        List<NotificationTask> tasks = new java.util.ArrayList<>();
         for (NotificationConfig notificationConfig : notificationConfigList) {
             boolean enable = notificationConfig.getEnable();
             int retry = notificationConfig.getRetry();
@@ -93,22 +108,34 @@ public class NotificationUtil {
             Class<? extends BaseNotification> aClass = NOTIFICATION_MAP.get(notificationType);
 
             BaseNotification baseNotification = ReflectUtil.newInstance(aClass);
-            EXECUTOR_SERVICE.execute(() -> {
-                int currentRetry = 0;
-                do {
-                    if (currentRetry > 0) {
-                        log.warn("通知失败 正在重试 第{}次 {}", currentRetry, aClass.getName());
-                    }
-                    try {
-                        baseNotification.send(notificationConfig, ani, text, notificationStatusEnum);
-                        return;
-                    } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                    }
-                    currentRetry += 1;
-                    ThreadUtil.sleep(1000);
-                } while (currentRetry < retry);
-            });
+            tasks.add(new NotificationTask(aClass, baseNotification, notificationConfig, ani, text, notificationStatusEnum, retry));
         }
+        return tasks;
+    }
+
+    private static void execute(NotificationTask task) {
+        int currentRetry = 0;
+        do {
+            if (currentRetry > 0) {
+                log.warn("通知失败 正在重试 第{}次 {}", currentRetry, task.notificationClass().getName());
+            }
+            try {
+                task.notification().send(task.config(), task.ani(), task.text(), task.status());
+                return;
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+            }
+            currentRetry += 1;
+            ThreadUtil.sleep(1000);
+        } while (currentRetry < task.retry());
+    }
+
+    private record NotificationTask(Class<? extends BaseNotification> notificationClass,
+                                    BaseNotification notification,
+                                    NotificationConfig config,
+                                    Ani ani,
+                                    String text,
+                                    NotificationStatusEnum status,
+                                    int retry) {
     }
 }

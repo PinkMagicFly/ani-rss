@@ -297,6 +297,24 @@ public class TorrentUtil {
         return b;
     }
 
+    public static Boolean pause(TorrentsInfo torrentsInfo) {
+        try {
+            return DOWNLOAD.pause(torrentsInfo);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return false;
+        }
+    }
+
+    public static Boolean resume(TorrentsInfo torrentsInfo) {
+        try {
+            return DOWNLOAD.resume(torrentsInfo);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            return false;
+        }
+    }
+
 
     /**
      * 修改保存位置

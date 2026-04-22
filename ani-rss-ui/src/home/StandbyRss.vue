@@ -54,6 +54,27 @@
             <el-input-number v-else v-model:model-value="standbyRss[it.$index].offset" size="small"/>
           </template>
         </el-table-column>
+        <el-table-column label="下载规则模板" min-width="170px">
+          <template #default="it">
+            <div v-if="editIndex !== it.$index">
+              {{ standbyRss[it.$index].rssDownloadRuleName || '不使用' }}
+            </div>
+            <el-select
+                v-else
+                v-model="standbyRss[it.$index].rssDownloadRuleName"
+                clearable
+                filterable
+                placeholder="不使用"
+                size="small">
+              <el-option label="不使用" value=""/>
+              <el-option
+                  v-for="item in downloadRuleTemplates"
+                  :key="item.name"
+                  :label="item.name"
+                  :value="item.name"/>
+            </el-select>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="300">
           <template #default="it">
             <div class="flex">
@@ -86,12 +107,14 @@
 <script setup>
 import {ref} from "vue";
 import Mikan from "./Mikan.vue";
+import * as http from "../js/http.js";
 
 const editIndex = ref(-1)
 
 const dialogVisible = ref(false)
 const standbyRss = ref()
 const mikanRef = ref()
+const downloadRuleTemplates = ref([])
 const config = ref({
   standbyRss: true
 })
@@ -101,9 +124,11 @@ let show = () => {
   dialogVisible.value = true
   standbyRss.value = JSON.parse(JSON.stringify(props.ani.standbyRssList))
 
-  config
+  http.config()
       .then(res => {
         config.value = res.data;
+        downloadRuleTemplates.value = (res.data.rssDownloadRuleTemplates || [])
+            .filter(it => it?.name)
       })
 }
 
@@ -111,7 +136,8 @@ let plus = () => {
   let object = {
     label: '未知字幕组',
     url: '',
-    offset: props.ani.offset
+    offset: props.ani.offset,
+    rssDownloadRuleName: ''
   }
   standbyRss.value.push(object)
   editIndex.value = standbyRss.value.length - 1
@@ -128,6 +154,9 @@ let check = () => {
   standbyRss.value = standbyRss.value
       .map(it => {
         it.url = it.url.trim()
+        if (it.rssDownloadRuleName === undefined || it.rssDownloadRuleName === null) {
+          it.rssDownloadRuleName = ''
+        }
         return it;
       })
       .filter(it => it.url !== '')

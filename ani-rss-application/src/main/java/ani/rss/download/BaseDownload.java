@@ -81,6 +81,26 @@ public interface BaseDownload {
     Boolean addTags(TorrentsInfo torrentsInfo, String tags);
 
     /**
+     * 暂停任务
+     *
+     * @param torrentsInfo 任务
+     * @return 状态
+     */
+    default Boolean pause(TorrentsInfo torrentsInfo) {
+        return true;
+    }
+
+    /**
+     * 恢复任务
+     *
+     * @param torrentsInfo 任务
+     * @return 状态
+     */
+    default Boolean resume(TorrentsInfo torrentsInfo) {
+        return true;
+    }
+
+    /**
      * 自动更新 Trackers
      *
      * @param trackers trackers 列表
