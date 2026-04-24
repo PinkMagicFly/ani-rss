@@ -29,6 +29,7 @@ import wushuo.tmdb.api.entity.Tmdb;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +39,7 @@ import java.util.stream.Collectors;
 @Service
 public class DownloadService {
     private static final Object LOCK = new Object();
+    private static final UploadPauseGate UPLOAD_PAUSE_GATE = new UploadPauseGate();
 
     public record DownloadAniResult(int itemCount, int addedCount) {
     }
@@ -557,13 +559,11 @@ public class DownloadService {
         if (tags.contains(TorrentsTags.BACK_RSS.getValue())) {
             text = StrFormatter.format("(备用RSS) {}", text);
         }
-        boolean resumeAfterUpload = pauseForUpload(torrentsInfo);
+        beginUploadWindow();
         try {
             NotificationUtil.sendAndWait(ConfigUtil.CONFIG, ani, text, NotificationStatusEnum.DOWNLOAD_END);
         } finally {
-            if (resumeAfterUpload) {
-                resumeAfterUpload(torrentsInfo);
-            }
+            endUploadWindow();
         }
 
         String title = ani.getTitle();
@@ -576,26 +576,131 @@ public class DownloadService {
         }
     }
 
-    private boolean pauseForUpload(TorrentsInfo torrentsInfo) {
-        TorrentsInfo.State state = torrentsInfo.getState();
-        if (!List.of(
-                TorrentsInfo.State.queuedUP.name(),
-                TorrentsInfo.State.uploading.name(),
-                TorrentsInfo.State.stalledUP.name()
-        ).contains(state.name())) {
-            return false;
-        }
-        boolean paused = TorrentUtil.pause(torrentsInfo);
-        if (paused) {
-            log.info("上传前暂停 qBittorrent 任务 {}", torrentsInfo.getName());
-        }
-        return paused;
+    private void beginUploadWindow() {
+        UPLOAD_PAUSE_GATE.begin();
     }
 
-    private void resumeAfterUpload(TorrentsInfo torrentsInfo) {
-        boolean resumed = TorrentUtil.resume(torrentsInfo);
-        if (resumed) {
-            log.info("上传完成，恢复 qBittorrent 做种 {}", torrentsInfo.getName());
+    private void endUploadWindow() {
+        UPLOAD_PAUSE_GATE.end();
+    }
+
+    private static final class UploadPauseGate {
+        private static final long MONITOR_SLEEP_MS = 2000L;
+
+        private final AtomicInteger uploadCount = new AtomicInteger(0);
+        private final Set<String> pausedHashes = new LinkedHashSet<>();
+        private Thread monitorThread;
+
+        public synchronized void begin() {
+            uploadCount.incrementAndGet();
+            pauseCompletedSeedingTorrents();
+            ensureMonitorThread();
+        }
+
+        public void end() {
+            int remaining = uploadCount.updateAndGet(count -> Math.max(0, count - 1));
+            if (remaining > 0) {
+                return;
+            }
+
+            stopMonitorThread();
+            resumePausedTorrents();
+        }
+
+        private synchronized void ensureMonitorThread() {
+            if (Objects.nonNull(monitorThread) && monitorThread.isAlive()) {
+                return;
+            }
+
+            monitorThread = new Thread(() -> {
+                while (uploadCount.get() > 0) {
+                    try {
+                        pauseCompletedSeedingTorrents();
+                        ThreadUtil.sleep(MONITOR_SLEEP_MS);
+                    } catch (Exception e) {
+                        log.error("上传守护暂停做种失败", e);
+                        ThreadUtil.sleep(MONITOR_SLEEP_MS);
+                    }
+                }
+            }, "UploadPauseGate");
+            monitorThread.setDaemon(true);
+            monitorThread.start();
+        }
+
+        private synchronized void stopMonitorThread() {
+            if (Objects.isNull(monitorThread)) {
+                return;
+            }
+
+            monitorThread.interrupt();
+            monitorThread = null;
+        }
+
+        private void pauseCompletedSeedingTorrents() {
+            if (!TorrentUtil.login()) {
+                return;
+            }
+
+            List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
+            for (TorrentsInfo torrentsInfo : torrentsInfos) {
+                if (!isCompletedSeedingState(torrentsInfo)) {
+                    continue;
+                }
+
+                if (TorrentUtil.pause(torrentsInfo)) {
+                    synchronized (this) {
+                        pausedHashes.add(torrentsInfo.getHash());
+                    }
+                    log.info("上传期间暂停 qBittorrent 做种 {}", torrentsInfo.getName());
+                }
+            }
+        }
+
+        private void resumePausedTorrents() {
+            Set<String> hashesToResume;
+            synchronized (this) {
+                if (pausedHashes.isEmpty()) {
+                    return;
+                }
+                hashesToResume = new LinkedHashSet<>(pausedHashes);
+                pausedHashes.clear();
+            }
+
+            if (!TorrentUtil.login()) {
+                return;
+            }
+
+            Map<String, TorrentsInfo> torrentsInfoMap = TorrentUtil.getTorrentsInfos()
+                    .stream()
+                    .collect(Collectors.toMap(TorrentsInfo::getHash, torrentsInfo -> torrentsInfo, (left, right) -> left));
+
+            for (String hash : hashesToResume) {
+                TorrentsInfo torrentsInfo = torrentsInfoMap.get(hash);
+                if (Objects.isNull(torrentsInfo)) {
+                    continue;
+                }
+
+                TorrentsInfo.State state = torrentsInfo.getState();
+                if (Objects.isNull(state) || !List.of(
+                        TorrentsInfo.State.pausedUP.name(),
+                        TorrentsInfo.State.stoppedUP.name()
+                ).contains(state.name())) {
+                    continue;
+                }
+
+                if (TorrentUtil.resume(torrentsInfo)) {
+                    log.info("上传完成，恢复 qBittorrent 做种 {}", torrentsInfo.getName());
+                }
+            }
+        }
+
+        private boolean isCompletedSeedingState(TorrentsInfo torrentsInfo) {
+            TorrentsInfo.State state = torrentsInfo.getState();
+            return Objects.nonNull(state) && List.of(
+                    TorrentsInfo.State.queuedUP.name(),
+                    TorrentsInfo.State.uploading.name(),
+                    TorrentsInfo.State.stalledUP.name()
+            ).contains(state.name());
         }
     }
 

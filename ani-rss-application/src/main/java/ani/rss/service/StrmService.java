@@ -58,7 +58,7 @@ public class StrmService {
         if (StrUtil.isBlank(url)) {
             return;
         }
-        writeStrm(ani, videoFile, url);
+        writeStrm(ani, videoFile, url, false);
     }
 
     public void switchToCloudStrm(Ani ani, File localVideoFile) {
@@ -69,7 +69,7 @@ public class StrmService {
         if (StrUtil.isBlank(url)) {
             return;
         }
-        writeStrm(ani, localVideoFile, url);
+        writeStrm(ani, localVideoFile, url, true);
     }
 
     public void syncLibrary(Ani ani) {
@@ -150,9 +150,13 @@ public class StrmService {
         return Boolean.TRUE.equals(ConfigUtil.CONFIG.getStrm());
     }
 
-    private void writeStrm(Ani ani, File videoFile, String url) {
+    private void writeStrm(Ani ani, File videoFile, String url, boolean allowCloudOverwrite) {
         File strmFile = getStrmFile(ani, videoFile);
         if (Objects.isNull(strmFile)) {
+            return;
+        }
+        if (!allowCloudOverwrite && keepExistingCloudStrm(strmFile, url)) {
+            copyMetadata(ani);
             return;
         }
         FileUtil.mkParentDirs(strmFile);
@@ -173,9 +177,26 @@ public class StrmService {
         if (StrUtil.isBlank(url)) {
             return;
         }
+        if (keepExistingCloudStrm(strmFile, url)) {
+            copyMetadata(ani);
+            return;
+        }
         FileUtil.mkParentDirs(strmFile);
         FileUtil.writeUtf8String(url + System.lineSeparator(), strmFile);
+        copyMetadata(ani);
         log.info("STRM 已同步 {} => {}", strmFile, url);
+    }
+
+    private boolean keepExistingCloudStrm(File strmFile, String nextUrl) {
+        if (Objects.isNull(strmFile) || !strmFile.exists()) {
+            return false;
+        }
+        String currentUrl = FileUtil.readUtf8String(strmFile).trim();
+        if (!isCloudUrl(currentUrl) || isCloudUrl(nextUrl)) {
+            return false;
+        }
+        log.info("STRM 已是云端地址，跳过本地覆盖 {} => {}", strmFile, currentUrl);
+        return true;
     }
 
     private void copyMetadata(Ani ani) {
@@ -442,6 +463,19 @@ public class StrmService {
 
     private String getBaseUrl(Config config) {
         return StrUtil.blankToDefault(config.getStrmBaseUrl(), config.getStrmWebDavBaseUrl());
+    }
+
+    private boolean isCloudUrl(String url) {
+        if (StrUtil.isBlank(url)) {
+            return false;
+        }
+        String baseUrl = StrUtil.removeSuffix(getBaseUrl(ConfigUtil.CONFIG), "/");
+        if (StrUtil.isBlank(baseUrl) || !url.startsWith(baseUrl)) {
+            return false;
+        }
+        String localPrefix = StrUtil.blankToDefault(ConfigUtil.CONFIG.getStrmLocalWebDavPathPrefix(), "/local");
+        String encodedLocalPrefix = encodePath(localPrefix);
+        return !url.startsWith(baseUrl + encodedLocalPrefix + "/");
     }
 
     private String getOpenListUploadTarget(Ani ani) {
