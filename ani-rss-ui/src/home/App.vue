@@ -91,6 +91,28 @@
           </popconfirm>
         </div>
         <div style="margin: 0 4px;">
+          <el-dropdown trigger="click">
+            <el-button bg text>
+              <el-icon :class="elIconClass">
+                <RefreshRight/>
+              </el-icon>
+              <template v-if="isNotMobile">
+                STRM刮削
+              </template>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="scrapeStrmAll(false)">
+                  全量STRM目录刮削
+                </el-dropdown-item>
+                <el-dropdown-item @click="scrapeStrmAll(true)">
+                  强制全量STRM目录刮削
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+        <div style="margin: 0 4px;">
           <el-button text bg @click="manage?.show">
             <el-icon :class="elIconClass">
               <Fold/>
@@ -132,7 +154,7 @@
 
 <script setup>
 import {onMounted, ref} from "vue";
-import {Fold, Plus, Refresh, Setting, Tickets} from "@element-plus/icons-vue"
+import {Fold, Plus, Refresh, RefreshRight, Setting, Tickets} from "@element-plus/icons-vue"
 import Config from "./Config.vue";
 import List from "./List.vue";
 import Add from "./Add.vue";
@@ -206,6 +228,13 @@ let refreshAni = () => {
       })
 }
 
+let scrapeStrmAll = (force) => {
+  http.scrapeStrmAll(force)
+      .then(res => {
+        ElMessage.success(res.message)
+      })
+}
+
 onMounted(() => {
   initLayout()
   selectChange()
@@ -230,4 +259,3 @@ onMounted(() => {
   justify-content: flex-end;
 }
 </style>
-

@@ -325,6 +325,22 @@
                 强制刮削
               </el-text>
             </el-dropdown-item>
+            <el-dropdown-item @click="scrapeStrm(false)">
+              <el-text>
+                <el-icon>
+                  <RefreshRight/>
+                </el-icon>
+                STRM目录刮削
+              </el-text>
+            </el-dropdown-item>
+            <el-dropdown-item @click="scrapeStrm(true)">
+              <el-text type="warning">
+                <el-icon>
+                  <Refresh/>
+                </el-icon>
+                强制STRM目录刮削
+              </el-text>
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -454,6 +470,13 @@ let mikanCallback = v => {
 
 let scrape = (force) => {
   http.scrape(force, props.ani)
+      .then(res => {
+        ElMessage.success(res.message)
+      })
+}
+
+let scrapeStrm = (force) => {
+  http.scrapeStrm(force, props.ani)
       .then(res => {
         ElMessage.success(res.message)
       })

@@ -247,6 +247,21 @@ export let downloadPath = (ani) => api.post('api/downloadPath', ani)
 export let scrape = (force, ani) => api.post(`api/scrape?force=${force}`, ani)
 
 /**
+ * STRM目录刮削
+ * @param force 强制 true/false
+ * @param ani 订阅
+ * @returns {Promise<unknown>}
+ */
+export let scrapeStrm = (force, ani) => api.post(`api/scrapeStrm?force=${force}`, ani)
+
+/**
+ * 全量STRM目录刮削
+ * @param force 强制 true/false
+ * @returns {Promise<unknown>}
+ */
+export let scrapeStrmAll = (force) => api.post(`api/scrapeStrmAll?force=${force}`)
+
+/**
  * 获取当前BGM账号信息
  * @param ani 订阅
  * @returns {Promise<unknown>}

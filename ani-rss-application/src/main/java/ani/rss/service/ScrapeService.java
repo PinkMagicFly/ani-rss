@@ -74,6 +74,31 @@ public class ScrapeService {
         }
     }
 
+    public void scrapeStrm(Ani ani, Boolean force) {
+        String title = ani.getTitle();
+        Tmdb tmdb = ani.getTmdb();
+
+        if (Objects.isNull(tmdb)) {
+            strmService.syncLibrary(ani);
+            return;
+        }
+
+        boolean isForce = Boolean.TRUE.equals(force);
+        boolean isOva = Boolean.TRUE.equals(ani.getOva());
+        try {
+            log.info("正在刮削 STRM 目录 ... {}", title);
+            if (isOva) {
+                scrapeStrmMovie(ani, isForce);
+            } else {
+                scrapeStrmTv(ani, isForce);
+            }
+            log.info("STRM 目录刮削完成 {}", title);
+        } catch (Exception e) {
+            log.error("STRM 目录刮削错误 {}", title);
+            log.error(e.getMessage(), e);
+        }
+    }
+
     /**
      * 电影刮削
      *
@@ -149,6 +174,61 @@ public class ScrapeService {
         String extName = FileUtil.extName(logoPath);
         File logoFile = new File(downloadPath + "/clearlogo." + extName);
         saveImages(logoPath, logoFile, force);
+    }
+
+    public void scrapeStrmMovie(Ani ani, Boolean force) throws Exception {
+        Tmdb tmdb = ani.getTmdb();
+
+        Optional<Tmdb> tmdbOptional = TmdbUtils.getTmdb(tmdb, TmdbTypeEnum.MOVIE);
+        if (tmdbOptional.isEmpty()) {
+            log.warn("获取tmdb失败 {}", tmdb.getId());
+            return;
+        }
+        tmdb = tmdbOptional.get();
+
+        List<File> libraryDirs = strmService.getExistingLibrarySeasonDirs(ani);
+        for (File libraryDir : libraryDirs) {
+            Optional<File> mediaFile = FileUtil.loopFiles(libraryDir, file ->
+                            file.isFile() && isVideoOrStrm(file.getName()))
+                    .stream()
+                    .max(Comparator.comparingLong(File::length));
+
+            if (mediaFile.isEmpty()) {
+                continue;
+            }
+
+            File file = mediaFile.get();
+            String mainName = FileUtil.mainName(file);
+
+            String outputPath = libraryDir + "/" + mainName + ".nfo";
+            if (force || !FileUtil.exist(outputPath)) {
+                nfoGenerator.generateMovieNfo(tmdb, outputPath);
+            }
+
+            String posterPath = tmdb.getPosterPath();
+            String fanartPath = tmdb.getBackdropPath();
+
+            String posterExtName = FileUtil.extName(posterPath);
+            String fanartExtName = FileUtil.extName(fanartPath);
+
+            File posterFile = new File(libraryDir + "/poster." + posterExtName);
+            File fanartFile = new File(libraryDir + "/fanart." + fanartExtName);
+
+            saveImages(posterPath, posterFile, force);
+            saveImages(fanartPath, fanartFile, force);
+
+            TmdbImages tmdbImages = TmdbUtils.getTmdbImages(tmdb, TmdbTypeEnum.MOVIE);
+            List<TmdbImage> logos = tmdbImages.getLogos();
+            if (logos.isEmpty()) {
+                continue;
+            }
+
+            TmdbImage tmdbImage = logos.get(0);
+            String logoPath = tmdbImage.getFilePath();
+            String extName = FileUtil.extName(logoPath);
+            File logoFile = new File(libraryDir + "/clearlogo." + extName);
+            saveImages(logoPath, logoFile, force);
+        }
     }
 
     /**
@@ -283,6 +363,123 @@ public class ScrapeService {
                 nfoGenerator.generateEpisodeNfo(tmdbEpisode, episodeFile);
             }
         }
+    }
+
+    public void scrapeStrmTv(Ani ani, Boolean force) throws Exception {
+        Tmdb tmdb = ani.getTmdb();
+
+        Optional<Tmdb> tmdbOptional = TmdbUtils.getTmdb(tmdb, TmdbTypeEnum.TV);
+        if (tmdbOptional.isEmpty()) {
+            log.warn("获取tmdb失败 {}", tmdb.getId());
+            return;
+        }
+        tmdb = tmdbOptional.get();
+
+        Integer season = ani.getSeason();
+        Optional<TmdbSeason> optional = TmdbUtils.getTmdbSeason(tmdb, season);
+        if (optional.isEmpty()) {
+            return;
+        }
+        TmdbSeason tmdbSeason = optional.get();
+        String seasonFormat = String.format("%02d", season);
+
+        Map<Integer, TmdbEpisode> episodeMap = tmdbSeason
+                .getEpisodes()
+                .stream()
+                .collect(Collectors.toMap(TmdbEpisode::getEpisodeNumber, it -> it));
+
+        List<File> libraryDirs = strmService.getExistingLibrarySeasonDirs(ani);
+        for (File seasonDir : libraryDirs) {
+            if (!FileUtil.exist(seasonDir)) {
+                continue;
+            }
+
+            File showDir = seasonDir.getParentFile();
+            if (Objects.isNull(showDir)) {
+                continue;
+            }
+
+            String tvShowNfoFile = showDir + "/tvshow.nfo";
+            if (force || !FileUtil.exist(tvShowNfoFile)) {
+                nfoGenerator.generateTvShowNfo(tmdb, tvShowNfoFile);
+            }
+
+            String posterPath = tmdb.getPosterPath();
+            String fanartPath = tmdb.getBackdropPath();
+
+            String posterExtName = FileUtil.extName(posterPath);
+            String fanartExtName = FileUtil.extName(fanartPath);
+
+            File posterFile = new File(showDir + "/poster." + posterExtName);
+            File fanartFile = new File(showDir + "/fanart." + fanartExtName);
+
+            saveImages(posterPath, posterFile, force);
+            saveImages(fanartPath, fanartFile, force);
+
+            TmdbImages tmdbImages = TmdbUtils.getTmdbImages(tmdb, TmdbTypeEnum.TV);
+            List<TmdbImage> logos = tmdbImages.getLogos();
+            if (!logos.isEmpty()) {
+                TmdbImage tmdbImage = logos.get(0);
+                String logoPath = tmdbImage.getFilePath();
+                String extName = FileUtil.extName(logoPath);
+                File logoFile = new File(showDir + "/clearlogo." + extName);
+                saveImages(logoPath, logoFile, force);
+            }
+
+            String seasonPosterPath = StrUtil.blankToDefault(tmdbSeason.getPosterPath(), posterPath);
+            String seasonPosterExtName = FileUtil.extName(seasonPosterPath);
+            File seasonPosterFile = new File(showDir + "/season" + seasonFormat + "-poster." + seasonPosterExtName);
+            saveImages(seasonPosterPath, seasonPosterFile, force);
+
+            String seasonNfoFile = seasonDir + "/season.nfo";
+            if (force || !FileUtil.exist(seasonNfoFile)) {
+                nfoGenerator.generateSeasonNfo(tmdbSeason, seasonNfoFile);
+            }
+
+            File[] files = FileUtils.listFiles(seasonDir);
+            for (File file : files) {
+                if (!file.isFile() || !isVideoOrStrm(file.getName())) {
+                    continue;
+                }
+
+                String mainName = FileUtil.mainName(file);
+                if (!ReUtil.contains(StringEnum.SEASON_REG, mainName)) {
+                    continue;
+                }
+
+                int seasonNumber = Integer.parseInt(ReUtil.get(StringEnum.SEASON_REG, mainName, 1));
+                if (season != seasonNumber) {
+                    continue;
+                }
+
+                Integer episodeNumber = Integer.parseInt(ReUtil.get(StringEnum.SEASON_REG, mainName, 2));
+                if (!episodeMap.containsKey(episodeNumber)) {
+                    continue;
+                }
+
+                TmdbEpisode tmdbEpisode = episodeMap.get(episodeNumber);
+
+                String thumbPath = tmdbEpisode.getStillPath();
+                if (StrUtil.isNotBlank(thumbPath)) {
+                    String thumbExtName = FileUtil.extName(thumbPath);
+                    File thumbFile = new File(seasonDir + "/" + mainName + "-thumb." + thumbExtName);
+                    saveImages(thumbPath, thumbFile, force);
+                }
+
+                String episodeFile = seasonDir + "/" + mainName + ".nfo";
+                if (force || !FileUtil.exist(episodeFile)) {
+                    nfoGenerator.generateEpisodeNfo(tmdbEpisode, episodeFile);
+                }
+            }
+        }
+    }
+
+    private boolean isVideoOrStrm(String name) {
+        String extName = FileUtil.extName(name);
+        if (StrUtil.isBlank(extName)) {
+            return false;
+        }
+        return FileUtils.isVideoFormat(extName) || "strm".equalsIgnoreCase(extName);
     }
 
     /**

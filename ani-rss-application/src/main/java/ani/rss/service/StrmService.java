@@ -126,6 +126,20 @@ public class StrmService {
         deleteEmptyParents(source.getParentFile());
     }
 
+    public List<File> getExistingLibrarySeasonDirs(Ani ani) {
+        if (!enabled() || Objects.isNull(ani)) {
+            return List.of();
+        }
+        return List.of(getLibrarySeasonDir(ani), getPastSeasonArchiveDir(ani))
+                .stream()
+                .filter(Objects::nonNull)
+                .map(file -> new File(FileUtils.getAbsolutePath(file)))
+                .distinct()
+                .filter(File::exists)
+                .filter(File::isDirectory)
+                .toList();
+    }
+
     public boolean hasEpisodeMetadata(Ani ani, Item item) {
         if (!enabled() || Objects.isNull(ani) || Objects.isNull(item)) {
             return false;
