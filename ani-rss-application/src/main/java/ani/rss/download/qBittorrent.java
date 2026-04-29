@@ -504,6 +504,22 @@ public class qBittorrent implements BaseDownload {
     }
 
     @Override
+    public Boolean removeTags(TorrentsInfo torrentsInfo, String tags) {
+        String host = config.getDownloadToolHost();
+        String hash = torrentsInfo.getHash();
+        return HttpReq.post(host + "/api/v2/torrents/removeTags")
+                .form("hashes", hash)
+                .form("tags", tags)
+                .thenFunction(res -> {
+                    boolean ok = res.isOk();
+                    if (!ok) {
+                        log.error(res.body());
+                    }
+                    return ok;
+                });
+    }
+
+    @Override
     public Boolean pause(TorrentsInfo torrentsInfo) {
         return stop(torrentsInfo, config);
     }

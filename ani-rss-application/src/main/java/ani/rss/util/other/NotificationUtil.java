@@ -55,11 +55,13 @@ public class NotificationUtil {
         }
     }
 
-    public static synchronized void sendAndWait(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
+    public static synchronized boolean sendAndWait(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
         List<NotificationTask> tasks = getNotificationTasks(config, ani, text, notificationStatusEnum);
+        boolean success = true;
         for (NotificationTask task : tasks) {
-            execute(task);
+            success = execute(task) && success;
         }
+        return success;
     }
 
     private static List<NotificationTask> getNotificationTasks(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
@@ -113,7 +115,7 @@ public class NotificationUtil {
         return tasks;
     }
 
-    private static void execute(NotificationTask task) {
+    private static boolean execute(NotificationTask task) {
         int currentRetry = 0;
         do {
             if (currentRetry > 0) {
@@ -121,13 +123,14 @@ public class NotificationUtil {
             }
             try {
                 task.notification().send(task.config(), task.ani(), task.text(), task.status());
-                return;
+                return true;
             } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }
             currentRetry += 1;
             ThreadUtil.sleep(1000);
         } while (currentRetry < task.retry());
+        return false;
     }
 
     private record NotificationTask(Class<? extends BaseNotification> notificationClass,

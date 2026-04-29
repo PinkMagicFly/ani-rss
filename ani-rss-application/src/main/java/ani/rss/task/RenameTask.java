@@ -38,14 +38,9 @@ public class RenameTask implements BaseTask {
                 if (!loop.get()) {
                     return;
                 }
-                Boolean deleteStandbyRSSOnly = config.getDeleteStandbyRSSOnly();
                 try {
                     TorrentUtil.rename(torrentsInfo);
-                    downloadService.notification(torrentsInfo);
-                    if (deleteStandbyRSSOnly) {
-                        continue;
-                    }
-                    TorrentUtil.delete(torrentsInfo);
+                    downloadService.dispatchNotification(torrentsInfo);
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
                 }

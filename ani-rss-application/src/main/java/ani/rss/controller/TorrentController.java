@@ -3,12 +3,15 @@ package ani.rss.controller;
 import ani.rss.annotation.Auth;
 import ani.rss.commons.FileUtils;
 import ani.rss.entity.Ani;
+import ani.rss.entity.TorrentsInfo;
 import ani.rss.entity.web.Result;
+import ani.rss.service.DownloadService;
 import ani.rss.util.other.AniUtil;
 import ani.rss.util.other.TorrentUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,6 +24,8 @@ import java.util.Optional;
 @Slf4j
 @RestController
 public class TorrentController extends BaseController {
+    @Resource
+    private DownloadService downloadService;
 
     @Auth
     @Operation(summary = "删除缓存种子")
@@ -45,5 +50,27 @@ public class TorrentController extends BaseController {
             }
         }
         return Result.success("删除完成");
+    }
+
+    @Auth
+    @Operation(summary = "重新执行已完成任务的上传通知")
+    @PostMapping("/retryUpload")
+    public Result<Void> retryUpload(@RequestParam("hash") String hash) {
+        List<String> hashList = StrUtil.split(hash, ",", true, true);
+        List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
+
+        int count = 0;
+        for (TorrentsInfo torrentsInfo : torrentsInfos) {
+            if (!hashList.contains(torrentsInfo.getHash())) {
+                continue;
+            }
+            downloadService.retryNotification(torrentsInfo);
+            count++;
+        }
+
+        if (count < 1) {
+            return Result.error("未找到对应任务");
+        }
+        return Result.success("已加入重试队列");
     }
 }

@@ -81,6 +81,17 @@ public interface BaseDownload {
     Boolean addTags(TorrentsInfo torrentsInfo, String tags);
 
     /**
+     * 为任务移除标签
+     *
+     * @param torrentsInfo 任务
+     * @param tags         标签
+     * @return 状态
+     */
+    default Boolean removeTags(TorrentsInfo torrentsInfo, String tags) {
+        return false;
+    }
+
+    /**
      * 暂停任务
      *
      * @param torrentsInfo 任务

@@ -297,6 +297,21 @@ public class TorrentUtil {
         return b;
     }
 
+    public static Boolean removeTags(TorrentsInfo torrentsInfo, String tags) {
+        if (StrUtil.isBlank(tags)) {
+            return false;
+        }
+        String name = torrentsInfo.getName();
+        log.debug("移除标签 {} {}", name, tags);
+        boolean b = false;
+        try {
+            b = DOWNLOAD.removeTags(torrentsInfo, tags);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+        return b;
+    }
+
     public static Boolean pause(TorrentsInfo torrentsInfo) {
         try {
             return DOWNLOAD.pause(torrentsInfo);

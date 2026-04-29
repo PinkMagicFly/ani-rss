@@ -280,6 +280,22 @@ public class Transmission implements BaseDownload {
     }
 
     @Override
+    public Boolean removeTags(TorrentsInfo torrentsInfo, String tag) {
+        String id = torrentsInfo.getId();
+        List<String> tags = torrentsInfo.getTags();
+        List<String> strings = new ArrayList<>(tags);
+        strings.removeIf(tag::equals);
+
+        String body = ResourceUtil.readUtf8Str("transmission/torrent-set.json");
+        body = StrFormatter.format(body, GsonStatic.toJson(strings), id);
+        return HttpReq.post(host + "/transmission/rpc")
+                .header(Header.AUTHORIZATION, authorization)
+                .header("X-Transmission-Session-Id", sessionId)
+                .body(body)
+                .thenFunction(HttpResponse::isOk);
+    }
+
+    @Override
     public void updateTrackers(Set<String> trackers) {
         log.info("Transmission暂时还不支持 自动更新Trackers");
     }

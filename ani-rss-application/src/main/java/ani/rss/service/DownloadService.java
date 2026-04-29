@@ -15,12 +15,14 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.lang.Opt;
 import cn.hutool.core.lang.func.Func1;
 import cn.hutool.core.text.StrFormatter;
+import cn.hutool.core.thread.ExecutorBuilder;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.extra.spring.SpringUtil;
 import cn.hutool.json.JSONUtil;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.Synchronized;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,8 @@ import wushuo.tmdb.api.entity.Tmdb;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -40,12 +44,31 @@ import java.util.stream.Collectors;
 public class DownloadService {
     private static final Object LOCK = new Object();
     private static final UploadPauseGate UPLOAD_PAUSE_GATE = new UploadPauseGate();
+    private static final Set<String> COMPLETED_NOTIFICATION_HASHES = Collections.synchronizedSet(new LinkedHashSet<>());
+    private static final ExecutorService COMPLETED_TORRENT_EXECUTOR = ExecutorBuilder.create()
+            .setCorePoolSize(2)
+            .setMaxPoolSize(4)
+            .setWorkQueue(new LinkedBlockingQueue<>(256))
+            .build();
+    private static final ExecutorService UPLOAD_NOTIFICATION_EXECUTOR = ExecutorBuilder.create()
+            .setCorePoolSize(1)
+            .setMaxPoolSize(1)
+            .setWorkQueue(new LinkedBlockingQueue<>(256))
+            .build();
 
     public record DownloadAniResult(int itemCount, int addedCount) {
     }
 
+    private record CompletedNotificationContext(TorrentsInfo torrentsInfo, Ani ani, String text) {
+    }
+
     @Resource
     private ScrapeService scrapeService;
+
+    @PostConstruct
+    public void restorePausedSeedingTorrentsOnStartup() {
+        UPLOAD_PAUSE_GATE.resumeIfIdle();
+    }
 
     /**
      * 下载动漫
@@ -483,9 +506,16 @@ public class DownloadService {
      *
      * @param torrentsInfo
      */
-    public synchronized void notification(TorrentsInfo torrentsInfo) {
+    public synchronized void dispatchNotification(TorrentsInfo torrentsInfo) {
+        dispatchNotificationInternal(torrentsInfo, false);
+    }
+
+    public synchronized void retryNotification(TorrentsInfo torrentsInfo) {
+        dispatchNotificationInternal(torrentsInfo, true);
+    }
+
+    private void dispatchNotificationInternal(TorrentsInfo torrentsInfo, boolean force) {
         TorrentsInfo.State state = torrentsInfo.getState();
-        String name = torrentsInfo.getName();
 
         if (Objects.isNull(state)) {
             return;
@@ -499,23 +529,52 @@ public class DownloadService {
         ).contains(state.name())) {
             return;
         }
-        // 添加下载完成标签，防止重复通知
+
         List<String> tags = torrentsInfo.getTags();
-        if (tags.contains(TorrentsTags.DOWNLOAD_COMPLETE.getValue())) {
+        if (!force && tags.contains(TorrentsTags.DOWNLOAD_COMPLETE.getValue())) {
             return;
         }
-        Boolean b = TorrentUtil.addTags(torrentsInfo, TorrentsTags.DOWNLOAD_COMPLETE.getValue());
-        if (!b) {
+
+        if (!tags.contains(TorrentsTags.DOWNLOAD_COMPLETE.getValue())) {
+            Boolean b = TorrentUtil.addTags(torrentsInfo, TorrentsTags.DOWNLOAD_COMPLETE.getValue());
+            if (!b) {
+                return;
+            }
+        }
+
+        String hash = torrentsInfo.getHash();
+        if (StrUtil.isBlank(hash) || !COMPLETED_NOTIFICATION_HASHES.add(hash)) {
             return;
         }
+
+        COMPLETED_TORRENT_EXECUTOR.execute(() -> handleCompletedTorrent(torrentsInfo));
+    }
+
+    private void handleCompletedTorrent(TorrentsInfo torrentsInfo) {
+        try {
+            Optional<CompletedNotificationContext> contextOpt = prepareCompletedNotification(torrentsInfo);
+            if (contextOpt.isPresent()) {
+                queueUploadNotification(contextOpt.get());
+                return;
+            }
+            recoverCompletedNotification(torrentsInfo);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+            recoverCompletedNotification(torrentsInfo);
+        }
+    }
+
+    private Optional<CompletedNotificationContext> prepareCompletedNotification(TorrentsInfo torrentsInfo) {
+        String name = torrentsInfo.getName();
+        List<String> tags = torrentsInfo.getTags();
         Optional<Ani> aniOpt = findAniByDownloadPath(torrentsInfo);
 
         if (aniOpt.isEmpty()) {
             log.debug("未能获取番剧对象: {}", torrentsInfo.getName());
-            return;
+            return Optional.empty();
         }
 
-        Ani ani = aniOpt.get();
+        Ani ani = ObjectUtil.clone(aniOpt.get());
         Ani aniRef = findAniRefById(ani.getId()).orElse(null);
         if (Objects.nonNull(aniRef)) {
             trackLocalFiles(aniRef, torrentsInfo);
@@ -523,7 +582,8 @@ public class DownloadService {
 
         // 根据标签反向判断出字幕组
         String subgroup = ani.getSubgroup();
-        Set<String> collect = ani.getStandbyRssList()
+        Set<String> collect = Optional.ofNullable(ani.getStandbyRssList())
+                .orElse(List.of())
                 .stream()
                 .map(StandbyRss::getLabel)
                 .collect(Collectors.toSet());
@@ -559,11 +619,29 @@ public class DownloadService {
         if (tags.contains(TorrentsTags.BACK_RSS.getValue())) {
             text = StrFormatter.format("(备用RSS) {}", text);
         }
-        beginUploadWindow();
+        return Optional.of(new CompletedNotificationContext(torrentsInfo, ani, text));
+    }
+
+    private void queueUploadNotification(CompletedNotificationContext context) {
+        UPLOAD_PAUSE_GATE.enqueue();
+        UPLOAD_NOTIFICATION_EXECUTOR.execute(() -> notification(context));
+    }
+
+    private void notification(CompletedNotificationContext context) {
+        TorrentsInfo torrentsInfo = context.torrentsInfo();
+        Ani ani = context.ani();
+        String text = context.text();
+        boolean success;
+
         try {
-            NotificationUtil.sendAndWait(ConfigUtil.CONFIG, ani, text, NotificationStatusEnum.DOWNLOAD_END);
+            success = NotificationUtil.sendAndWait(ConfigUtil.CONFIG, ani, text, NotificationStatusEnum.DOWNLOAD_END);
         } finally {
             endUploadWindow();
+        }
+
+        if (!success) {
+            recoverCompletedNotification(torrentsInfo);
+            return;
         }
 
         String title = ani.getTitle();
@@ -574,66 +652,67 @@ public class DownloadService {
             log.error("番剧完结迁移失败 {}", title);
             log.error(e.getMessage(), e);
         }
+
+        if (Boolean.TRUE.equals(ConfigUtil.CONFIG.getDeleteStandbyRSSOnly())) {
+            releaseCompletedNotificationHash(torrentsInfo);
+            return;
+        }
+        try {
+            TorrentUtil.delete(torrentsInfo);
+        } finally {
+            releaseCompletedNotificationHash(torrentsInfo);
+        }
     }
 
-    private void beginUploadWindow() {
-        UPLOAD_PAUSE_GATE.begin();
+    private void releaseCompletedNotificationHash(TorrentsInfo torrentsInfo) {
+        String hash = torrentsInfo.getHash();
+        if (StrUtil.isBlank(hash)) {
+            return;
+        }
+        COMPLETED_NOTIFICATION_HASHES.remove(hash);
+    }
+
+    private void recoverCompletedNotification(TorrentsInfo torrentsInfo) {
+        try {
+            TorrentUtil.removeTags(torrentsInfo, TorrentsTags.DOWNLOAD_COMPLETE.getValue());
+        } finally {
+            releaseCompletedNotificationHash(torrentsInfo);
+        }
     }
 
     private void endUploadWindow() {
-        UPLOAD_PAUSE_GATE.end();
+        UPLOAD_PAUSE_GATE.complete();
     }
 
     private static final class UploadPauseGate {
-        private static final long MONITOR_SLEEP_MS = 2000L;
+        private final AtomicInteger pendingUploadCount = new AtomicInteger(0);
 
-        private final AtomicInteger uploadCount = new AtomicInteger(0);
-        private final Set<String> pausedHashes = new LinkedHashSet<>();
-        private Thread monitorThread;
-
-        public synchronized void begin() {
-            uploadCount.incrementAndGet();
-            pauseCompletedSeedingTorrents();
-            ensureMonitorThread();
+        public void enqueue() {
+            pendingUploadCount.incrementAndGet();
+            pauseUploadsIfNeeded();
         }
 
-        public void end() {
-            int remaining = uploadCount.updateAndGet(count -> Math.max(0, count - 1));
+        public void complete() {
+            int remaining = pendingUploadCount.updateAndGet(count -> Math.max(0, count - 1));
             if (remaining > 0) {
                 return;
             }
 
-            stopMonitorThread();
-            resumePausedTorrents();
+            resumePausedSeedingTorrents();
         }
 
-        private synchronized void ensureMonitorThread() {
-            if (Objects.nonNull(monitorThread) && monitorThread.isAlive()) {
+        public void pauseUploadsIfNeeded() {
+            if (pendingUploadCount.get() < 1) {
                 return;
             }
-
-            monitorThread = new Thread(() -> {
-                while (uploadCount.get() > 0) {
-                    try {
-                        pauseCompletedSeedingTorrents();
-                        ThreadUtil.sleep(MONITOR_SLEEP_MS);
-                    } catch (Exception e) {
-                        log.error("上传守护暂停做种失败", e);
-                        ThreadUtil.sleep(MONITOR_SLEEP_MS);
-                    }
-                }
-            }, "UploadPauseGate");
-            monitorThread.setDaemon(true);
-            monitorThread.start();
+            pauseCompletedSeedingTorrents();
         }
 
-        private synchronized void stopMonitorThread() {
-            if (Objects.isNull(monitorThread)) {
+        public void resumeIfIdle() {
+            if (pendingUploadCount.get() > 0) {
                 return;
             }
-
-            monitorThread.interrupt();
-            monitorThread = null;
+            resumePausedSeedingTorrents();
         }
 
         private void pauseCompletedSeedingTorrents() {
@@ -648,38 +727,18 @@ public class DownloadService {
                 }
 
                 if (TorrentUtil.pause(torrentsInfo)) {
-                    synchronized (this) {
-                        pausedHashes.add(torrentsInfo.getHash());
-                    }
                     log.info("上传期间暂停 qBittorrent 做种 {}", torrentsInfo.getName());
                 }
             }
         }
 
-        private void resumePausedTorrents() {
-            Set<String> hashesToResume;
-            synchronized (this) {
-                if (pausedHashes.isEmpty()) {
-                    return;
-                }
-                hashesToResume = new LinkedHashSet<>(pausedHashes);
-                pausedHashes.clear();
-            }
-
+        private void resumePausedSeedingTorrents() {
             if (!TorrentUtil.login()) {
                 return;
             }
 
-            Map<String, TorrentsInfo> torrentsInfoMap = TorrentUtil.getTorrentsInfos()
-                    .stream()
-                    .collect(Collectors.toMap(TorrentsInfo::getHash, torrentsInfo -> torrentsInfo, (left, right) -> left));
-
-            for (String hash : hashesToResume) {
-                TorrentsInfo torrentsInfo = torrentsInfoMap.get(hash);
-                if (Objects.isNull(torrentsInfo)) {
-                    continue;
-                }
-
+            List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
+            for (TorrentsInfo torrentsInfo : torrentsInfos) {
                 TorrentsInfo.State state = torrentsInfo.getState();
                 if (Objects.isNull(state) || !List.of(
                         TorrentsInfo.State.pausedUP.name(),
