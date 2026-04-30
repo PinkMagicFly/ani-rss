@@ -271,7 +271,70 @@ peerbanhelper:
 
 ## 6. ani-rss 镜像构建
 
-### 6.1 Dockerfile
+如果你只是想直接跑现成版本，不需要自己编译，优先用预构建镜像。
+
+### 6.1 直接使用预构建镜像
+
+这个仓库会在 GitHub Release 页面提供已经打包好的运行时镜像。
+
+也就是说：
+
+- 不需要自己安装 Maven
+- 不需要自己打 jar
+- 不需要自己 `docker build`
+
+你只需要：
+
+1. 到 Release 页面下载镜像包
+2. 导入 Docker
+3. 在 `docker-compose.yml` 里引用导入后的镜像标签
+
+当前示例发布：
+
+- Release：`v3.0.24-pmf.1`
+- 资产文件：`ani-rss-v3.0.24-pmf.1-image.tar.gz`
+
+导入方式：
+
+```bash
+gunzip -c ani-rss-v3.0.24-pmf.1-image.tar.gz | docker load
+```
+
+导入后检查：
+
+```bash
+docker images | grep ani-rss
+```
+
+当前这份发布包里实际包含的镜像标签是：
+
+```text
+ani-rss:custom-20260428-queuefix
+```
+
+所以你可以直接在 compose 里写：
+
+```yaml
+ani-rss:
+  image: ani-rss:custom-20260428-queuefix
+```
+
+如果你不想把 compose 绑死到某个构建标签，建议导入后额外打一层稳定标签：
+
+```bash
+docker tag ani-rss:custom-20260428-queuefix ani-rss:stable
+```
+
+然后 compose 改成：
+
+```yaml
+ani-rss:
+  image: ani-rss:stable
+```
+
+这样以后升级时只需要重新 `docker tag`，不用每次改 `docker-compose.yml`。
+
+### 6.2 Dockerfile
 
 当前仓库里的实际镜像构建方式是：
 
@@ -295,7 +358,7 @@ CMD ["/exec.sh"]
 1. 先用 Maven 把 jar 打出来
 2. 再用 Dockerfile 打镜像
 
-### 6.2 使用 Maven 镜像构建 jar
+### 6.3 使用 Maven 镜像构建 jar
 
 你要求保留 `maven` 镜像，这也是我现在这台机器的做法。直接用容器构建，不在宿主机装 Maven：
 
@@ -309,7 +372,7 @@ docker run --rm --network host \
   mvn -B -DskipTests package --file pom.xml
 ```
 
-### 6.3 构建 ani-rss 镜像
+### 6.4 构建 ani-rss 镜像
 
 ```bash
 docker build -f /root/ani-rss/docker/Dockerfile \
