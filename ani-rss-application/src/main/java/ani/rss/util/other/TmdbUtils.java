@@ -2,12 +2,18 @@ package ani.rss.util.other;
 
 import ani.rss.commons.CacheUtils;
 import ani.rss.commons.ExceptionUtils;
+import ani.rss.commons.GsonStatic;
 import ani.rss.entity.Ani;
 import ani.rss.entity.Config;
 import ani.rss.entity.CustomTmdbConfig;
+import ani.rss.util.basic.HttpReq;
+import cn.hutool.core.date.DateTime;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.text.StrFormatter;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.core.util.URLUtil;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import wushuo.tmdb.api.TmdbUtil;
 import wushuo.tmdb.api.entity.*;
@@ -42,8 +48,19 @@ public class TmdbUtils {
         try {
             if (ova) {
                 tmdb = getTmdbMovie(name);
+                if (tmdb.isEmpty()) {
+                    tmdb = getTmdbTv(name);
+                }
             } else {
                 tmdb = getTmdbTv(name);
+                if (tmdb.isEmpty() && isMovieFallbackCandidate(ani)) {
+                    tmdb = getTmdbMovie(name);
+                    if (tmdb.isPresent()) {
+                        // 单话作品补查到电影条目后，后续刮削需要走电影分支
+                        ani.setOva(true);
+                        log.info("{} TMDB TV未匹配到，回退到电影条目 {}", ani.getTitle(), tmdb.get().getId());
+                    }
+                }
             }
         } catch (Exception e) {
             String message = ExceptionUtils.getMessage(e);
@@ -59,6 +76,14 @@ public class TmdbUtils {
 
         String themoviedbName = tmdb.get().getName();
         return getFinalName(themoviedbName, tmdb.get());
+    }
+
+    private static boolean isMovieFallbackCandidate(Ani ani) {
+        if (Objects.isNull(ani)) {
+            return false;
+        }
+        Integer totalEpisodeNumber = ani.getTotalEpisodeNumber();
+        return Objects.equals(totalEpisodeNumber, 1);
     }
 
     /**
@@ -183,7 +208,68 @@ public class TmdbUtils {
      * @return
      */
     public static Optional<Tmdb> getTmdb(String titleName, TmdbTypeEnum tmdbType) {
-        return TMDB_UTIL.getTmdb(titleName, tmdbType);
+        Optional<Tmdb> tmdb = TMDB_UTIL.getTmdb(titleName, tmdbType);
+        if (tmdb.isPresent()) {
+            return tmdb;
+        }
+        return searchTmdbByApi(titleName, tmdbType);
+    }
+
+    private static Optional<Tmdb> searchTmdbByApi(String titleName, TmdbTypeEnum tmdbType) {
+        if (StrUtil.isBlank(titleName)) {
+            return Optional.empty();
+        }
+
+        Config config = ConfigUtil.CONFIG;
+        String api = StrUtil.blankToDefault(config.getTmdbApi(), "https://api.themoviedb.org");
+        String apiKey = config.getTmdbApiKey();
+        apiKey = StrUtil.blankToDefault(apiKey, "450e4f651e1c93e31383e20f8e731e5f");
+        String language = StrUtil.blankToDefault(config.getTmdbLanguage(), "zh-CN");
+        String mediaType = tmdbType == TmdbTypeEnum.MOVIE ? "movie" : "tv";
+        String url = StrFormatter.format(
+                "{}/3/search/{}?api_key={}&language={}&query={}",
+                api,
+                mediaType,
+                apiKey,
+                language,
+                URLUtil.encodeQuery(titleName, java.nio.charset.StandardCharsets.UTF_8)
+        );
+
+        try {
+            return HttpReq.get(url)
+                    .timeout(5000)
+                    .thenFunction(res -> {
+                        HttpReq.assertStatus(res);
+                        JsonObject body = GsonStatic.fromJson(res.body(), JsonObject.class);
+                        JsonArray results = body.getAsJsonArray("results");
+                        if (Objects.isNull(results) || results.isEmpty()) {
+                            return Optional.<Tmdb>empty();
+                        }
+                        JsonObject first = results.get(0).getAsJsonObject();
+                        String id = first.get("id").getAsString();
+                        String title = first.has("title") && !first.get("title").isJsonNull() ?
+                                first.get("title").getAsString() :
+                                first.get("name").getAsString();
+                        String dateStr = first.has("release_date") && !first.get("release_date").isJsonNull() ?
+                                first.get("release_date").getAsString() :
+                                first.has("first_air_date") && !first.get("first_air_date").isJsonNull() ?
+                                        first.get("first_air_date").getAsString() : "";
+                        DateTime date = StrUtil.isBlank(dateStr) ? DateUtil.date() : DateUtil.parseDate(dateStr);
+                        Tmdb seed = new Tmdb()
+                                .setId(id)
+                                .setName(title)
+                                .setDate(date);
+                        Optional<Tmdb> detail = getTmdb(seed, tmdbType);
+                        if (detail.isPresent()) {
+                            return detail;
+                        }
+                        return Optional.of(seed);
+                    });
+        } catch (Exception e) {
+            log.warn("TMDB官方搜索兜底失败 {} {}", tmdbType, titleName);
+            log.warn(ExceptionUtils.getMessage(e));
+            return Optional.empty();
+        }
     }
 
     /**

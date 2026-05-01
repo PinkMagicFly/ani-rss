@@ -1030,7 +1030,7 @@ public class DownloadService {
                 })
                 .anyMatch(file -> {
                     if (ova) {
-                        return true;
+                        return file.isFile() && FileUtils.isVideoFormat(file.getName());
                     }
 
                     String mainName = FileUtil.mainName(file);

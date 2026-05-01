@@ -98,8 +98,14 @@ public class AniController extends BaseController {
         Boolean enable = ani.getEnable();
         if (enable) {
             ThreadUtil.execute(() -> {
-                if (TorrentUtil.login()) {
-                    downloadService.downloadAni(ani);
+                try {
+                    if (TorrentUtil.login()) {
+                        downloadService.downloadAni(ani);
+                    }
+                } catch (Exception e) {
+                    String message = ExceptionUtils.getMessage(e);
+                    log.error("{} 初次下载检查失败 {}", title, message);
+                    log.error(message, e);
                 }
             });
         } else {
@@ -404,8 +410,9 @@ public class AniController extends BaseController {
             } catch (Exception e) {
                 String message = ExceptionUtils.getMessage(e);
                 log.error(message, e);
+            } finally {
+                DOWNLOAD.set(false);
             }
-            DOWNLOAD.set(false);
         });
         return Result.success("已开始刷新RSS {}", downloadAni.getTitle());
     }

@@ -9,6 +9,7 @@ import ani.rss.entity.TorrentsInfo;
 import ani.rss.enums.StringEnum;
 import ani.rss.enums.NotificationTypeEnum;
 import ani.rss.util.other.ConfigUtil;
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.ReUtil;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.nio.file.StandardCopyOption;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -318,11 +320,39 @@ public class StrmService {
             log.warn("STRM 输出路径模版为空，跳过往季归档 {}", ani.getTitle());
             return null;
         }
-        String relativePath = getDownloadRelativePath(ani);
+        String relativePath = getArchiveRelativePath(ani);
         if (StrUtil.isBlank(relativePath)) {
             return null;
         }
         return new File(new File(libraryRoot, "往季"), relativePath);
+    }
+
+    private String getArchiveRelativePath(Ani ani) {
+        String relativePath = getDownloadRelativePath(ani);
+        if (StrUtil.isBlank(relativePath)) {
+            return "";
+        }
+        Date releaseDate = ani.getReleaseDate();
+        if (Objects.isNull(releaseDate)) {
+            return relativePath;
+        }
+
+        int year = DateUtil.year(releaseDate);
+        int month = DateUtil.month(releaseDate) + 1;
+        String quarterName;
+        if (List.of(12, 1, 2).contains(month)) {
+            if (month == 12) {
+                year++;
+            }
+            quarterName = "冬";
+        } else if (List.of(3, 4, 5).contains(month)) {
+            quarterName = "春";
+        } else if (List.of(6, 7, 8).contains(month)) {
+            quarterName = "夏";
+        } else {
+            quarterName = "秋";
+        }
+        return FileUtils.normalize(year + "/" + quarterName + "/" + relativePath);
     }
 
     private String getDownloadRelativePath(Ani ani) {
