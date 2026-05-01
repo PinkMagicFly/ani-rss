@@ -40,6 +40,7 @@ public class RenameTask implements BaseTask {
                 }
                 try {
                     TorrentUtil.rename(torrentsInfo);
+                    downloadService.pauseSeedingIfUploadActive(torrentsInfo);
                     downloadService.dispatchNotification(torrentsInfo);
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);

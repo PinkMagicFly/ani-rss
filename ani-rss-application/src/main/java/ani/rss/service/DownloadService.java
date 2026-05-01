@@ -70,6 +70,10 @@ public class DownloadService {
         UPLOAD_PAUSE_GATE.resumeIfIdle();
     }
 
+    public void pauseSeedingIfUploadActive(TorrentsInfo torrentsInfo) {
+        UPLOAD_PAUSE_GATE.pauseIfNeeded(torrentsInfo);
+    }
+
     /**
      * 下载动漫
      *
@@ -482,6 +486,7 @@ public class DownloadService {
         for (int i = 1; i <= downloadRetry; i++) {
             try {
                 if (TorrentUtil.DOWNLOAD.download(ani, item, savePath, torrentFile, ova)) {
+                    eagerStartAddedTorrent(torrentFile, name);
                     return true;
                 }
             } catch (Exception e) {
@@ -499,6 +504,32 @@ public class DownloadService {
                 StrFormatter.format("{} 添加失败，疑似为坏种", name),
                 NotificationStatusEnum.ERROR);
         return false;
+    }
+
+    private void eagerStartAddedTorrent(File torrentFile, String name) {
+        if (!Boolean.TRUE.equals(ConfigUtil.CONFIG.getRename())) {
+            return;
+        }
+
+        String hash = FileUtil.mainName(torrentFile);
+        for (int i = 0; i < 3; i++) {
+            try {
+                Optional<TorrentsInfo> torrentsInfoOpt = TorrentUtil.getTorrentsInfos()
+                        .stream()
+                        .filter(torrentsInfo -> Objects.equals(torrentsInfo.getHash(), hash)
+                                || Objects.equals(torrentsInfo.getName(), name))
+                        .findFirst();
+                if (torrentsInfoOpt.isEmpty()) {
+                    continue;
+                }
+                TorrentUtil.rename(torrentsInfoOpt.get());
+                return;
+            } catch (Exception e) {
+                log.debug("新下载任务定向启动失败 {} attempt={}", name, i + 1);
+                log.debug(e.getMessage(), e);
+            }
+            ThreadUtil.sleep(1000);
+        }
     }
 
     /**
@@ -706,6 +737,18 @@ public class DownloadService {
                 return;
             }
             pauseCompletedSeedingTorrents();
+        }
+
+        public void pauseIfNeeded(TorrentsInfo torrentsInfo) {
+            if (pendingUploadCount.get() < 1 || Objects.isNull(torrentsInfo)) {
+                return;
+            }
+            if (!isCompletedSeedingState(torrentsInfo)) {
+                return;
+            }
+            if (TorrentUtil.pause(torrentsInfo)) {
+                log.info("上传期间暂停 qBittorrent 做种 {}", torrentsInfo.getName());
+            }
         }
 
         public void resumeIfIdle() {
