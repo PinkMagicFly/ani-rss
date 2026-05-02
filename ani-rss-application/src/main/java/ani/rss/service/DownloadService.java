@@ -206,15 +206,15 @@ public class DownloadService {
         for (Item item : items) {
             log.debug(JSONUtil.formatJsonStr(GsonStatic.toJson(item)));
             String reName = item.getReName();
-            File torrent = TorrentUtil.getTorrent(ani, item);
             Boolean master = item.getMaster();
-            String hash = FileUtil.mainName(torrent)
+            File torrentFile = TorrentUtil.getTorrent(ani, item);
+            String hash = FileUtil.mainName(torrentFile)
                     .trim().toLowerCase();
 
             Double episode = item.getEpisode();
             boolean is5 = ItemsUtil.is5(episode);
 
-            if (torrent.exists()) {
+            if (TorrentUtil.exists(ani, item)) {
                 if (master && !is5) {
                     currentDownloadCount++;
                 }

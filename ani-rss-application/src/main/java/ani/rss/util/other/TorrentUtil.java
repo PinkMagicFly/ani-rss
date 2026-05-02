@@ -96,6 +96,43 @@ public class TorrentUtil {
         return new File(torrents + "/" + infoHash + ".torrent");
     }
 
+    public static String getSeasonEpisodeToken(Item item) {
+        if (Objects.isNull(item)) {
+            return "";
+        }
+        String reName = item.getReName();
+        if (StrUtil.isBlank(reName)) {
+            return "";
+        }
+        String token = ReUtil.get(StringEnum.SEASON_REG, reName.toUpperCase(), 0);
+        return StrUtil.blankToDefault(token, "");
+    }
+
+    public static File getEpisodeMarker(Ani ani, Item item) {
+        String token = getSeasonEpisodeToken(item);
+        if (StrUtil.isBlank(token)) {
+            return null;
+        }
+        return new File(getTorrentDir(ani), token.toUpperCase() + ".episode");
+    }
+
+    public static boolean exists(Ani ani, Item item) {
+        File torrent = getTorrent(ani, item);
+        if (torrent.exists()) {
+            return true;
+        }
+        File marker = getEpisodeMarker(ani, item);
+        return Objects.nonNull(marker) && marker.exists();
+    }
+
+    public static void touchEpisodeMarker(Ani ani, Item item) {
+        File marker = getEpisodeMarker(ani, item);
+        if (Objects.isNull(marker)) {
+            return;
+        }
+        FileUtil.writeUtf8String("", marker);
+    }
+
     /**
      * 下载种子文件
      *
@@ -108,18 +145,21 @@ public class TorrentUtil {
         log.info("下载种子 {}", reName);
         File saveTorrentFile = getTorrent(ani, item);
         if (saveTorrentFile.exists()) {
+            touchEpisodeMarker(ani, item);
             return saveTorrentFile;
         }
 
         try {
             if (ReUtil.contains(StringEnum.MAGNET_REG, torrent)) {
                 FileUtil.writeUtf8String(torrent, saveTorrentFile);
+                touchEpisodeMarker(ani, item);
                 log.info("种子下载完成 {}", reName);
                 return saveTorrentFile;
             }
 
             if (ReUtil.contains(StringEnum.ED2K_REG, torrent)) {
                 FileUtil.writeUtf8String(torrent, saveTorrentFile);
+                touchEpisodeMarker(ani, item);
                 log.info("种子下载完成 {}", reName);
                 return saveTorrentFile;
             }
@@ -130,11 +170,13 @@ public class TorrentUtil {
                         if (status == 404) {
                             // 如果为 404 则写入空文件 已在 getMagnet 处理过
                             FileUtil.writeUtf8String("", saveTorrentFile);
+                            touchEpisodeMarker(ani, item);
                             log.info("种子下载完成 {}", reName);
                             return saveTorrentFile;
                         }
                         HttpReq.assertStatus(res);
                         FileUtil.writeFromStream(res.bodyStream(), saveTorrentFile, true);
+                        touchEpisodeMarker(ani, item);
                         log.info("种子下载完成 {}", reName);
                         return saveTorrentFile;
                     });

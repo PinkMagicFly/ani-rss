@@ -445,8 +445,7 @@ public class AniController extends BaseController {
 
         for (Item item : items) {
             item.setLocal(false);
-            File torrent = TorrentUtil.getTorrent(ani, item);
-            if (torrent.exists()) {
+            if (TorrentUtil.exists(ani, item)) {
                 item.setLocal(true);
                 continue;
             }
