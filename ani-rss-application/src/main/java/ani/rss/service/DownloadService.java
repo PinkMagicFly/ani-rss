@@ -296,9 +296,8 @@ public class DownloadService {
                 return new SourceDownloadResult(count, currentDownloadCount, addedCount, sync);
             }
 
-            sync = true;
-
             if (download(ani, item, savePath, saveTorrent)) {
+                sync = true;
                 addedCount++;
 
                 if (master && !is5) {
@@ -996,6 +995,7 @@ public class DownloadService {
         }
 
         List<File> files = FileUtils.listFileList(downloadPath);
+        String seasonEpisodeToken = getSeasonEpisodeToken(reName);
 
         if (files.stream()
                 .filter(file -> {
@@ -1011,6 +1011,10 @@ public class DownloadService {
                 .anyMatch(file -> {
                     if (ova) {
                         return file.isFile() && FileUtils.isVideoFormat(file.getName());
+                    }
+
+                    if (StrUtil.isNotBlank(seasonEpisodeToken) && containsSeasonEpisodeToken(file.getName(), seasonEpisodeToken)) {
+                        return true;
                     }
 
                     String mainName = FileUtil.mainName(file);
@@ -1038,11 +1042,30 @@ public class DownloadService {
         return false;
     }
 
+    private String getSeasonEpisodeToken(String name) {
+        if (StrUtil.isBlank(name)) {
+            return "";
+        }
+        String token = ReUtil.get(StringEnum.SEASON_REG, name.toUpperCase(), 0);
+        return StrUtil.blankToDefault(token, "");
+    }
+
+    private boolean containsSeasonEpisodeToken(String name, String seasonEpisodeToken) {
+        if (StrUtil.isBlank(name) || StrUtil.isBlank(seasonEpisodeToken)) {
+            return false;
+        }
+        return name.toUpperCase().contains(seasonEpisodeToken.toUpperCase());
+    }
+
     private boolean sameEpisodeName(Boolean ova, Integer season, Double episode, String reName, String name) {
         if (StrUtil.isBlank(name)) {
             return false;
         }
         if (name.equalsIgnoreCase(reName)) {
+            return true;
+        }
+        String seasonEpisodeToken = getSeasonEpisodeToken(reName);
+        if (StrUtil.isNotBlank(seasonEpisodeToken) && containsSeasonEpisodeToken(name, seasonEpisodeToken)) {
             return true;
         }
         if (Boolean.TRUE.equals(ova)) {
