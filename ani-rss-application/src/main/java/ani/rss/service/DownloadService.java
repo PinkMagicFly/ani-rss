@@ -62,9 +62,6 @@ public class DownloadService {
     private record CompletedNotificationContext(TorrentsInfo torrentsInfo, Ani ani, String text) {
     }
 
-    @Resource
-    private ScrapeService scrapeService;
-
     @PostConstruct
     public void restorePausedSeedingTorrentsOnStartup() {
         UPLOAD_PAUSE_GATE.resumeIfIdle();
@@ -482,18 +479,24 @@ public class DownloadService {
 
         Config config = ConfigUtil.CONFIG;
 
+        boolean added = false;
         Integer downloadRetry = config.getDownloadRetry();
         for (int i = 1; i <= downloadRetry; i++) {
             try {
                 if (TorrentUtil.DOWNLOAD.download(ani, item, savePath, torrentFile, ova)) {
-                    eagerStartAddedTorrent(torrentFile, name);
-                    return true;
+                    added = true;
+                    break;
                 }
             } catch (Exception e) {
                 String message = ExceptionUtils.getMessage(e);
                 log.error(message, e);
             }
             log.error("{} 下载失败将进行重试, 当前重试次数为{}次", name, i);
+        }
+
+        if (added) {
+            ThreadUtil.execAsync(() -> eagerStartAddedTorrent(torrentFile, name));
+            return true;
         }
 
         // 删除下载失败的种子, 下次轮询仍会重试
@@ -626,25 +629,6 @@ public class DownloadService {
                 .orElse(subgroup);
         subgroup = StrUtil.blankToDefault(subgroup, "未知字幕组");
         ani.setSubgroup(subgroup);
-
-        Config config = ConfigUtil.CONFIG;
-        Boolean scrape = config.getScrape();
-        if (scrape) {
-            try {
-                // 刮削
-                scrapeService.scrape(ani, false);
-            } catch (Exception e) {
-                log.error("刮削失败: {}", ani.getTitle());
-                log.error(e.getMessage(), e);
-            }
-        }
-
-        try {
-            SpringUtil.getBean(StrmService.class).writeLocalStrm(ani, torrentsInfo);
-        } catch (Exception e) {
-            log.error("STRM 生成失败: {}", ani.getTitle());
-            log.error(e.getMessage(), e);
-        }
 
         String text = StrFormatter.format("{} 下载完成", name);
         if (tags.contains(TorrentsTags.BACK_RSS.getValue())) {
@@ -978,10 +962,6 @@ public class DownloadService {
 
         String downloadPath = getDownloadPath(ani);
 
-        if (SpringUtil.getBean(StrmService.class).hasEpisodeMetadata(ani, item)) {
-            return true;
-        }
-
         if (downloadList) {
             List<TorrentsInfo> torrentsInfos = TorrentUtil.getTorrentsInfos();
             for (TorrentsInfo torrentsInfo : torrentsInfos) {
@@ -1091,7 +1071,7 @@ public class DownloadService {
      * @param torrentsInfo
      * @return
      */
-    public synchronized Optional<Ani> findAniByDownloadPath(TorrentsInfo torrentsInfo) {
+    public Optional<Ani> findAniByDownloadPath(TorrentsInfo torrentsInfo) {
         String downloadDir = torrentsInfo.getDownloadDir();
         return AniUtil.ANI_LIST
                 .stream()
@@ -1103,13 +1083,13 @@ public class DownloadService {
                 .findFirst();
     }
 
-    public synchronized Optional<Ani> findAniRefById(String id) {
+    public Optional<Ani> findAniRefById(String id) {
         return AniUtil.ANI_LIST.stream()
                 .filter(ani -> Objects.equals(ani.getId(), id))
                 .findFirst();
     }
 
-    public synchronized void trackLocalFiles(Ani ani, TorrentsInfo torrentsInfo) {
+    public void trackLocalFiles(Ani ani, TorrentsInfo torrentsInfo) {
         List<String> names = Optional.ofNullable(torrentsInfo.getFiles())
                 .map(files -> files.get())
                 .orElse(List.of());

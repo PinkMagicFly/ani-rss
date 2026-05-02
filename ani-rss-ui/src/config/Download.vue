@@ -122,51 +122,6 @@
         </el-alert>
       </div>
     </el-form-item>
-    <el-form-item label="STRM">
-      <div class="download-path-container">
-        <el-switch v-model:model-value="props.config.strm"/>
-        <el-input
-            v-model:model-value="props.config.strmBaseUrl"
-            :disabled="!props.config.strm"
-            placeholder="播放基础地址, 如 https://www.popopo.icu/dav"
-        />
-        <el-input
-            v-model:model-value="props.config.strmLocalPathPrefix"
-            :disabled="!props.config.strm"
-            placeholder="本地文件系统前缀, 默认 /downloads"
-        />
-        <el-input
-            v-model:model-value="props.config.strmLocalWebDavPathPrefix"
-            :disabled="!props.config.strm"
-            placeholder="本地 WebDAV 路径前缀, 默认 /local"
-        />
-        <el-input
-            v-model:model-value="props.config.strmCloudWebDavPathPrefix"
-            :disabled="!props.config.strm"
-            placeholder="云端 WebDAV 路径前缀, 留空自动使用 OpenList 上传路径"
-        />
-        <el-input
-            v-model:model-value="props.config.strmOutputPathTemplate"
-            :disabled="!props.config.strm"
-            placeholder="STRM 输出位置, 如 /kodi-strm/${weekName}/${title}/Season ${season}"
-        />
-        <el-input
-            v-model:model-value="props.config.strmOvaOutputPathTemplate"
-            :disabled="!props.config.strm"
-            placeholder="STRM 输出位置(剧场版), 如 /kodi-strm/电影/${year}/${quarterName}/${title}"
-        />
-        <el-input
-            v-model:model-value="props.config.strmArchivePathTemplate"
-            :disabled="!props.config.strm"
-            placeholder="删除订阅归档到往季目录"
-        />
-        <el-input
-            v-model:model-value="props.config.strmArchiveOvaPathTemplate"
-            :disabled="!props.config.strm"
-            placeholder="删除订阅归档到往季目录(剧场版)"
-        />
-      </div>
-    </el-form-item>
     <el-form-item label="自动删除">
       <div>
         <el-switch v-model:model-value="props.config.delete"/>
@@ -237,7 +192,7 @@
 </template>
 
 <script setup>
-import {computed, ref} from "vue";
+import {ref} from "vue";
 import {ElMessage, ElText} from "element-plus";
 import {Key, User} from "@element-plus/icons-vue";
 import QBittorrent from "@/config/download/qBittorrent.vue";
@@ -298,86 +253,6 @@ let testPathTemplate = (path) => {
 let activeName = ref([])
 
 let props = defineProps(['config'])
-
-const trimTrailingSlash = (value) => {
-  if (!value) {
-    return ''
-  }
-  return value.replace(/\/+$/, '')
-}
-
-const normalizeJoinedPath = (...parts) => {
-  return parts
-      .filter(Boolean)
-      .map((part, index) => {
-        if (index === 0) {
-          return trimTrailingSlash(part)
-        }
-        return part.replace(/^\/+/, '').replace(/\/+$/, '')
-      })
-      .filter(Boolean)
-      .join('/')
-}
-
-const inferRootPrefix = (template) => {
-  if (!template) {
-    return ''
-  }
-  let index = template.indexOf('${')
-  if (index > -1) {
-    template = template.substring(0, index)
-  }
-  return trimTrailingSlash(template)
-}
-
-const relativeArchiveTemplate = (downloadTemplate) => {
-  if (!downloadTemplate) {
-    return ''
-  }
-  let downloadRoot = props.config.strmLocalPathPrefix || inferRootPrefix(props.config.downloadPathTemplate)
-  downloadRoot = trimTrailingSlash(downloadRoot)
-  let normalizedTemplate = trimTrailingSlash(downloadTemplate)
-  if (!downloadRoot) {
-    return normalizedTemplate.replace(/^\/+/, '')
-  }
-  if (!normalizedTemplate.startsWith(downloadRoot)) {
-    let segments = normalizedTemplate.split('/').filter(Boolean)
-    return segments[segments.length - 1] || ''
-  }
-  return normalizedTemplate.substring(downloadRoot.length).replace(/^\/+/, '')
-}
-
-const strmLibraryRoot = computed(() => inferRootPrefix(props.config.strmOutputPathTemplate))
-
-const strmArchivePathTemplate = computed(() => {
-  let root = strmLibraryRoot.value
-  if (!root) {
-    return ''
-  }
-  let relative = relativeArchiveTemplate(props.config.downloadPathTemplate)
-  return normalizeJoinedPath(root, '往季', '电视剧', '${year}', '${quarterName}', relative)
-})
-
-const strmArchiveOvaPathTemplate = computed(() => {
-  let root = strmLibraryRoot.value
-  if (!root) {
-    return ''
-  }
-  let relative = relativeArchiveTemplate(props.config.ovaDownloadPathTemplate || props.config.downloadPathTemplate)
-  return normalizeJoinedPath(root, '往季', '电影', '${year}', '${quarterName}', relative)
-})
-
-if (!props.config.strmOvaOutputPathTemplate) {
-  props.config.strmOvaOutputPathTemplate = normalizeJoinedPath(strmLibraryRoot.value, '电影', '${year}', '${quarterName}', '${title}')
-}
-
-if (!props.config.strmArchivePathTemplate) {
-  props.config.strmArchivePathTemplate = strmArchivePathTemplate.value
-}
-
-if (!props.config.strmArchiveOvaPathTemplate) {
-  props.config.strmArchiveOvaPathTemplate = strmArchiveOvaPathTemplate.value
-}
 </script>
 
 <style scoped>

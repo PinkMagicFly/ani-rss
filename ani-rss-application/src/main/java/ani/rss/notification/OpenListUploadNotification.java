@@ -9,7 +9,6 @@ import ani.rss.entity.web.Header;
 import ani.rss.enums.NotificationStatusEnum;
 import ani.rss.enums.StringEnum;
 import ani.rss.service.DownloadService;
-import ani.rss.service.StrmService;
 import ani.rss.util.basic.HttpReq;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.io.FileUtil;
@@ -234,8 +233,6 @@ public class OpenListUploadNotification implements BaseNotification {
                 long cloudFileLength = cloudFileMap.get(name)
                         .getSize();
                 if (localFileLength == cloudFileLength) {
-                    // 文件名与大小一致，确认云端已有完整文件，可直接切到云端
-                    SpringUtil.getBean(StrmService.class).switchToCloudStrm(ani, file);
                     continue;
                 }
             }
@@ -245,8 +242,6 @@ public class OpenListUploadNotification implements BaseNotification {
             if (!uploadFile(file.getAbsolutePath(), cloudFilePath)) {
                 continue;
             }
-            SpringUtil.getBean(StrmService.class).switchToCloudStrm(ani, file);
-
             if (openListUploadDeleteLocalFile) {
                 log.info("删除本地文件 {}", file);
                 FileUtil.del(file);
