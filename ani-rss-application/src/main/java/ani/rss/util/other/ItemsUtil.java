@@ -267,7 +267,31 @@ public class ItemsUtil {
                     }
                     return false;
                 }).toList();
-        return CollUtil.distinct(items, item -> item.getEpisode().toString(), true);
+        return preferMandarinItems(items);
+    }
+
+    private static List<Item> preferMandarinItems(List<Item> items) {
+        if (CollUtil.isEmpty(items)) {
+            return List.of();
+        }
+        Map<String, List<Item>> grouped = new LinkedHashMap<>();
+        for (Item item : items) {
+            grouped.computeIfAbsent(item.getEpisode().toString(), key -> new ArrayList<>()).add(item);
+        }
+        return grouped.values()
+                .stream()
+                .map(group -> group.stream()
+                        .filter(item -> isMandarinRelated(item.getTitle()))
+                        .findFirst()
+                        .orElse(group.get(0)))
+                .toList();
+    }
+
+    private static boolean isMandarinRelated(String title) {
+        if (StrUtil.isBlank(title)) {
+            return false;
+        }
+        return ReUtil.contains("国语|國語|国配|國配|普通话|普通話|中配|华语|華語|Mandarin|mandarin|中文配音", title);
     }
 
     public static synchronized List<Integer> omitList(Ani ani, List<Item> items) {

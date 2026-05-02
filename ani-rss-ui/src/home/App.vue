@@ -108,6 +108,12 @@
                 <el-dropdown-item @click="scrapeStrmAll(true)">
                   强制全量STRM目录刮削
                 </el-dropdown-item>
+                <el-dropdown-item @click="scrapePastStrmAll(false)">
+                  全量往季目录刮削
+                </el-dropdown-item>
+                <el-dropdown-item @click="scrapePastStrmAll(true)">
+                  强制全量往季目录刮削
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -230,6 +236,13 @@ let refreshAni = () => {
 
 let scrapeStrmAll = (force) => {
   http.scrapeStrmAll(force)
+      .then(res => {
+        ElMessage.success(res.message)
+      })
+}
+
+let scrapePastStrmAll = (force) => {
+  http.scrapePastStrmAll(force)
       .then(res => {
         ElMessage.success(res.message)
       })

@@ -128,6 +128,19 @@ public class StrmService {
         deleteEmptyParents(source.getParentFile());
     }
 
+    public void clearLibrary(Ani ani) {
+        if (!enabled() || Objects.isNull(ani)) {
+            return;
+        }
+        File source = getLibrarySeasonDir(ani);
+        if (Objects.isNull(source) || !source.exists()) {
+            return;
+        }
+        log.info("删除 STRM 媒体库目录 {}", source);
+        FileUtil.del(source);
+        deleteEmptyParents(source.getParentFile());
+    }
+
     public List<File> getExistingLibrarySeasonDirs(Ani ani) {
         if (!enabled() || Objects.isNull(ani)) {
             return List.of();
@@ -140,6 +153,28 @@ public class StrmService {
                 .filter(File::exists)
                 .filter(File::isDirectory)
                 .toList();
+    }
+
+    public Optional<File> getExistingLibrarySeasonDir(Ani ani) {
+        if (!enabled() || Objects.isNull(ani)) {
+            return Optional.empty();
+        }
+        File file = getLibrarySeasonDir(ani);
+        if (Objects.isNull(file) || !file.exists() || !file.isDirectory()) {
+            return Optional.empty();
+        }
+        return Optional.of(new File(FileUtils.getAbsolutePath(file)));
+    }
+
+    public Optional<File> getExistingPastSeasonArchiveDir(Ani ani) {
+        if (!enabled() || Objects.isNull(ani)) {
+            return Optional.empty();
+        }
+        File file = getPastSeasonArchiveDir(ani);
+        if (Objects.isNull(file) || !file.exists() || !file.isDirectory()) {
+            return Optional.empty();
+        }
+        return Optional.of(new File(FileUtils.getAbsolutePath(file)));
     }
 
     public boolean hasEpisodeMetadata(Ani ani, Item item) {
@@ -315,6 +350,16 @@ public class StrmService {
     }
 
     private File getPastSeasonArchiveDir(Ani ani) {
+        Config config = ObjectUtil.clone(ConfigUtil.CONFIG);
+        String archiveTemplate = Boolean.TRUE.equals(ani.getOva())
+                ? config.getStrmArchiveOvaPathTemplate()
+                : config.getStrmArchivePathTemplate();
+        if (StrUtil.isNotBlank(archiveTemplate)) {
+            config.setDownloadPathTemplate(archiveTemplate)
+                    .setOvaDownloadPathTemplate(archiveTemplate);
+            return new File(downloadService.getDownloadPath(ani, config));
+        }
+
         String libraryRoot = getLibraryRoot();
         if (StrUtil.isBlank(libraryRoot)) {
             log.warn("STRM 输出路径模版为空，跳过往季归档 {}", ani.getTitle());
@@ -433,7 +478,12 @@ public class StrmService {
 
     private String getOutputDir(Ani ani) {
         Config config = ConfigUtil.CONFIG;
-        String template = config.getStrmOutputPathTemplate();
+        String template = Boolean.TRUE.equals(ani.getOva())
+                ? config.getStrmOvaOutputPathTemplate()
+                : config.getStrmOutputPathTemplate();
+        if (StrUtil.isBlank(template) && Boolean.TRUE.equals(ani.getOva())) {
+            template = config.getStrmOutputPathTemplate();
+        }
         if (StrUtil.isBlank(template)) {
             return downloadService.getDownloadPath(ani);
         }

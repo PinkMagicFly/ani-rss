@@ -45,6 +45,24 @@ export let setAni = (move, ani) => api.post(`api/setAni?move=${move}`, ani)
 export let deleteAni = (deleteFiles, ids) => api.post(`api/deleteAni?deleteFiles=${deleteFiles}`, ids)
 
 /**
+ * 归档订阅STRM到往季目录
+ * @param ids ids
+ * @returns {Promise<unknown>}
+ */
+export let archiveAniStrm = (ids) => api.post('api/archiveAniStrm', ids)
+
+/**
+ * 清理订阅本地资源
+ * @param deleteDownload 删除下载目录
+ * @param deleteTorrent 删除种子目录
+ * @param deleteStrm 删除STRM目录
+ * @param ids ids
+ * @returns {Promise<unknown>}
+ */
+export let cleanupAniResources = (deleteDownload, deleteTorrent, deleteStrm, ids) =>
+    api.post(`api/cleanupAniResources?deleteDownload=${deleteDownload}&deleteTorrent=${deleteTorrent}&deleteStrm=${deleteStrm}`, ids)
+
+/**
  * 关于
  * @returns {Promise<unknown>}
  */
@@ -255,11 +273,26 @@ export let scrape = (force, ani) => api.post(`api/scrape?force=${force}`, ani)
 export let scrapeStrm = (force, ani) => api.post(`api/scrapeStrm?force=${force}`, ani)
 
 /**
+ * 往季目录刮削
+ * @param force 强制 true/false
+ * @param ani 订阅
+ * @returns {Promise<unknown>}
+ */
+export let scrapePastStrm = (force, ani) => api.post(`api/scrapePastStrm?force=${force}`, ani)
+
+/**
  * 全量STRM目录刮削
  * @param force 强制 true/false
  * @returns {Promise<unknown>}
  */
 export let scrapeStrmAll = (force) => api.post(`api/scrapeStrmAll?force=${force}`)
+
+/**
+ * 全量往季目录刮削
+ * @param force 强制 true/false
+ * @returns {Promise<unknown>}
+ */
+export let scrapePastStrmAll = (force) => api.post(`api/scrapePastStrmAll?force=${force}`)
 
 /**
  * 获取当前BGM账号信息

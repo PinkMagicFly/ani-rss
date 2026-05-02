@@ -75,26 +75,33 @@ public class ScrapeService {
     }
 
     public void scrapeStrm(Ani ani, Boolean force) {
+        scrapeStrmInternal(ani, force, false);
+    }
+
+    public void scrapePastStrm(Ani ani, Boolean force) {
+        scrapeStrmInternal(ani, force, true);
+    }
+
+    private void scrapeStrmInternal(Ani ani, Boolean force, boolean pastOnly) {
         String title = ani.getTitle();
         Tmdb tmdb = ani.getTmdb();
 
         if (Objects.isNull(tmdb)) {
-            strmService.syncLibrary(ani);
             return;
         }
 
         boolean isForce = Boolean.TRUE.equals(force);
         boolean isOva = Boolean.TRUE.equals(ani.getOva());
         try {
-            log.info("正在刮削 STRM 目录 ... {}", title);
+            log.info("正在刮削 {} ... {}", pastOnly ? "往季目录" : "STRM 目录", title);
             if (isOva) {
-                scrapeStrmMovie(ani, isForce);
+                scrapeStrmMovie(ani, isForce, pastOnly);
             } else {
-                scrapeStrmTv(ani, isForce);
+                scrapeStrmTv(ani, isForce, pastOnly);
             }
-            log.info("STRM 目录刮削完成 {}", title);
+            log.info("{}刮削完成 {}", pastOnly ? "往季目录" : "STRM 目录", title);
         } catch (Exception e) {
-            log.error("STRM 目录刮削错误 {}", title);
+            log.error("{}刮削错误 {}", pastOnly ? "往季目录" : "STRM 目录", title);
             log.error(e.getMessage(), e);
         }
     }
@@ -176,7 +183,7 @@ public class ScrapeService {
         saveImages(logoPath, logoFile, force);
     }
 
-    public void scrapeStrmMovie(Ani ani, Boolean force) throws Exception {
+    public void scrapeStrmMovie(Ani ani, Boolean force, boolean pastOnly) throws Exception {
         Tmdb tmdb = ani.getTmdb();
 
         Optional<Tmdb> tmdbOptional = TmdbUtils.getTmdb(tmdb, TmdbTypeEnum.MOVIE);
@@ -186,7 +193,7 @@ public class ScrapeService {
         }
         tmdb = tmdbOptional.get();
 
-        List<File> libraryDirs = strmService.getExistingLibrarySeasonDirs(ani);
+        List<File> libraryDirs = getTargetLibraryDirs(ani, pastOnly);
         for (File libraryDir : libraryDirs) {
             Optional<File> mediaFile = FileUtil.loopFiles(libraryDir, file ->
                             file.isFile() && isVideoOrStrm(file.getName()))
@@ -365,7 +372,7 @@ public class ScrapeService {
         }
     }
 
-    public void scrapeStrmTv(Ani ani, Boolean force) throws Exception {
+    public void scrapeStrmTv(Ani ani, Boolean force, boolean pastOnly) throws Exception {
         Tmdb tmdb = ani.getTmdb();
 
         Optional<Tmdb> tmdbOptional = TmdbUtils.getTmdb(tmdb, TmdbTypeEnum.TV);
@@ -388,7 +395,7 @@ public class ScrapeService {
                 .stream()
                 .collect(Collectors.toMap(TmdbEpisode::getEpisodeNumber, it -> it));
 
-        List<File> libraryDirs = strmService.getExistingLibrarySeasonDirs(ani);
+        List<File> libraryDirs = getTargetLibraryDirs(ani, pastOnly);
         for (File seasonDir : libraryDirs) {
             if (!FileUtil.exist(seasonDir)) {
                 continue;
@@ -480,6 +487,17 @@ public class ScrapeService {
             return false;
         }
         return FileUtils.isVideoFormat(extName) || "strm".equalsIgnoreCase(extName);
+    }
+
+    private List<File> getTargetLibraryDirs(Ani ani, boolean pastOnly) {
+        if (pastOnly) {
+            return strmService.getExistingPastSeasonArchiveDir(ani)
+                    .map(List::of)
+                    .orElse(List.of());
+        }
+        return strmService.getExistingLibrarySeasonDir(ani)
+                .map(List::of)
+                .orElse(List.of());
     }
 
     /**

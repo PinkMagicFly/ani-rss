@@ -14,6 +14,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.util.ReUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.ReflectUtil;
 import cn.hutool.core.util.URLUtil;
 import cn.hutool.http.HttpConnection;
@@ -31,6 +32,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -61,9 +63,10 @@ public class MikanController extends BaseController {
         );
 
         for (Mikan.Group group : groups) {
+            List<TorrentsInfo> items = filterMandarinItems(group.getItems());
+            group.setItems(items);
             Set<String> tags = new HashSet<>();
             List<List<Mikan.RegexItem>> regexList = new ArrayList<>();
-            List<TorrentsInfo> items = group.getItems();
             for (TorrentsInfo item : items) {
                 String name = item.getName();
                 List<Mikan.RegexItem> regexItems = new ArrayList<>();
@@ -86,6 +89,24 @@ public class MikanController extends BaseController {
                     .setTags(tags);
         }
         return Result.success(groups);
+    }
+
+    private List<TorrentsInfo> filterMandarinItems(List<TorrentsInfo> items) {
+        if (CollUtil.isEmpty(items)) {
+            return List.of();
+        }
+        List<TorrentsInfo> filtered = items.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> isMandarinRelated(item.getName()))
+                .toList();
+        return filtered.isEmpty() ? items : filtered;
+    }
+
+    private boolean isMandarinRelated(String name) {
+        if (StrUtil.isBlank(name)) {
+            return false;
+        }
+        return ReUtil.contains("国语|國語|国配|國配|普通话|普通話|中配|华语|華語|Mandarin|mandarin|中文配音", name);
     }
 
     @Auth

@@ -150,6 +150,21 @@
             :disabled="!props.config.strm"
             placeholder="STRM 输出位置, 如 /kodi-strm/${weekName}/${title}/Season ${season}"
         />
+        <el-input
+            v-model:model-value="props.config.strmOvaOutputPathTemplate"
+            :disabled="!props.config.strm"
+            placeholder="STRM 输出位置(剧场版), 如 /kodi-strm/电影/${year}/${quarterName}/${title}"
+        />
+        <el-input
+            v-model:model-value="props.config.strmArchivePathTemplate"
+            :disabled="!props.config.strm"
+            placeholder="删除订阅归档到往季目录"
+        />
+        <el-input
+            v-model:model-value="props.config.strmArchiveOvaPathTemplate"
+            :disabled="!props.config.strm"
+            placeholder="删除订阅归档到往季目录(剧场版)"
+        />
       </div>
     </el-form-item>
     <el-form-item label="自动删除">
@@ -222,7 +237,7 @@
 </template>
 
 <script setup>
-import {ref} from "vue";
+import {computed, ref} from "vue";
 import {ElMessage, ElText} from "element-plus";
 import {Key, User} from "@element-plus/icons-vue";
 import QBittorrent from "@/config/download/qBittorrent.vue";
@@ -283,6 +298,86 @@ let testPathTemplate = (path) => {
 let activeName = ref([])
 
 let props = defineProps(['config'])
+
+const trimTrailingSlash = (value) => {
+  if (!value) {
+    return ''
+  }
+  return value.replace(/\/+$/, '')
+}
+
+const normalizeJoinedPath = (...parts) => {
+  return parts
+      .filter(Boolean)
+      .map((part, index) => {
+        if (index === 0) {
+          return trimTrailingSlash(part)
+        }
+        return part.replace(/^\/+/, '').replace(/\/+$/, '')
+      })
+      .filter(Boolean)
+      .join('/')
+}
+
+const inferRootPrefix = (template) => {
+  if (!template) {
+    return ''
+  }
+  let index = template.indexOf('${')
+  if (index > -1) {
+    template = template.substring(0, index)
+  }
+  return trimTrailingSlash(template)
+}
+
+const relativeArchiveTemplate = (downloadTemplate) => {
+  if (!downloadTemplate) {
+    return ''
+  }
+  let downloadRoot = props.config.strmLocalPathPrefix || inferRootPrefix(props.config.downloadPathTemplate)
+  downloadRoot = trimTrailingSlash(downloadRoot)
+  let normalizedTemplate = trimTrailingSlash(downloadTemplate)
+  if (!downloadRoot) {
+    return normalizedTemplate.replace(/^\/+/, '')
+  }
+  if (!normalizedTemplate.startsWith(downloadRoot)) {
+    let segments = normalizedTemplate.split('/').filter(Boolean)
+    return segments[segments.length - 1] || ''
+  }
+  return normalizedTemplate.substring(downloadRoot.length).replace(/^\/+/, '')
+}
+
+const strmLibraryRoot = computed(() => inferRootPrefix(props.config.strmOutputPathTemplate))
+
+const strmArchivePathTemplate = computed(() => {
+  let root = strmLibraryRoot.value
+  if (!root) {
+    return ''
+  }
+  let relative = relativeArchiveTemplate(props.config.downloadPathTemplate)
+  return normalizeJoinedPath(root, '往季', '电视剧', '${year}', '${quarterName}', relative)
+})
+
+const strmArchiveOvaPathTemplate = computed(() => {
+  let root = strmLibraryRoot.value
+  if (!root) {
+    return ''
+  }
+  let relative = relativeArchiveTemplate(props.config.ovaDownloadPathTemplate || props.config.downloadPathTemplate)
+  return normalizeJoinedPath(root, '往季', '电影', '${year}', '${quarterName}', relative)
+})
+
+if (!props.config.strmOvaOutputPathTemplate) {
+  props.config.strmOvaOutputPathTemplate = normalizeJoinedPath(strmLibraryRoot.value, '电影', '${year}', '${quarterName}', '${title}')
+}
+
+if (!props.config.strmArchivePathTemplate) {
+  props.config.strmArchivePathTemplate = strmArchivePathTemplate.value
+}
+
+if (!props.config.strmArchiveOvaPathTemplate) {
+  props.config.strmArchiveOvaPathTemplate = strmArchiveOvaPathTemplate.value
+}
 </script>
 
 <style scoped>

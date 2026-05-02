@@ -46,6 +46,19 @@ public class ScrapeController extends BaseController {
     }
 
     @Auth
+    @Operation(summary = "往季目录刮削")
+    @PostMapping("/scrapePastStrm")
+    public Result<Void> scrapePastStrm(@RequestParam("force") Boolean force, @RequestBody Ani ani) {
+        ThreadUtil.execute(() ->
+                scrapeService.scrapePastStrm(ani, force)
+        );
+
+        String title = ani.getTitle();
+
+        return Result.success("已开始往季目录刮削 {}", title);
+    }
+
+    @Auth
     @Operation(summary = "全量STRM目录刮削")
     @PostMapping("/scrapeStrmAll")
     public Result<Void> scrapeStrmAll(@RequestParam("force") Boolean force) {
@@ -53,5 +66,15 @@ public class ScrapeController extends BaseController {
                 scrapeService.scrapeStrm(ani, force)
         ));
         return Result.success("已开始全量 STRM 目录刮削");
+    }
+
+    @Auth
+    @Operation(summary = "全量往季目录刮削")
+    @PostMapping("/scrapePastStrmAll")
+    public Result<Void> scrapePastStrmAll(@RequestParam("force") Boolean force) {
+        ThreadUtil.execute(() -> AniUtil.ANI_LIST.forEach(ani ->
+                scrapeService.scrapePastStrm(ani, force)
+        ));
+        return Result.success("已开始全量往季目录刮削");
     }
 }

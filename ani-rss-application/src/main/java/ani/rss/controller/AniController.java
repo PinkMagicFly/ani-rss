@@ -216,7 +216,8 @@ public class AniController extends BaseController {
     @Auth
     @Operation(summary = "删除订阅")
     @PostMapping("/deleteAni")
-    public Result<Void> deleteAni(@RequestBody List<String> ids, @RequestParam("deleteFiles") Boolean deleteFiles) {
+    public Result<Void> deleteAni(@RequestBody List<String> ids,
+                                  @RequestParam("deleteFiles") Boolean deleteFiles) {
         Assert.notEmpty(ids, "未选择订阅");
         List<Ani> anis = AniUtil.ANI_LIST.stream()
                 .filter(it -> ids.contains(it.getId()))
@@ -235,7 +236,6 @@ public class AniController extends BaseController {
                 File torrentDir = TorrentUtil.getTorrentDir(ani);
                 FileUtil.del(torrentDir);
                 clearService.clearParentFile(torrentDir);
-                strmService.deleteLibrary(ani);
                 log.info("删除订阅 {} {} {}", ani.getTitle(), ani.getUrl(), ani.getId());
             }
             if (!deleteFiles) {
@@ -272,6 +272,85 @@ public class AniController extends BaseController {
             }
         });
         return Result.success("删除订阅成功");
+    }
+
+    @Auth
+    @Operation(summary = "归档订阅 STRM 到往季目录")
+    @PostMapping("/archiveAniStrm")
+    public Result<Void> archiveAniStrm(@RequestBody List<String> ids) {
+        Assert.notEmpty(ids, "未选择订阅");
+        List<Ani> anis = AniUtil.ANI_LIST.stream()
+                .filter(it -> ids.contains(it.getId()))
+                .toList();
+        if (anis.isEmpty()) {
+            return Result.error("归档失败");
+        }
+        ThreadUtil.execute(() -> {
+            for (Ani ani : anis) {
+                strmService.deleteLibrary(ani);
+                log.info("归档订阅 STRM 到往季目录 {} {} {}", ani.getTitle(), ani.getUrl(), ani.getId());
+            }
+        });
+        return Result.success("归档成功");
+    }
+
+    @Auth
+    @Operation(summary = "清理订阅本地资源")
+    @PostMapping("/cleanupAniResources")
+    public Result<Void> cleanupAniResources(@RequestBody List<String> ids,
+                                            @RequestParam(value = "deleteDownload", defaultValue = "false") Boolean deleteDownload,
+                                            @RequestParam(value = "deleteTorrent", defaultValue = "false") Boolean deleteTorrent,
+                                            @RequestParam(value = "deleteStrm", defaultValue = "false") Boolean deleteStrm) {
+        Assert.notEmpty(ids, "未选择订阅");
+        Assert.isTrue(Boolean.TRUE.equals(deleteDownload) || Boolean.TRUE.equals(deleteTorrent) || Boolean.TRUE.equals(deleteStrm), "未选择清理项");
+
+        List<Ani> anis = AniUtil.ANI_LIST.stream()
+                .filter(it -> ids.contains(it.getId()))
+                .toList();
+        if (anis.isEmpty()) {
+            return Result.error("清理失败");
+        }
+
+        ThreadUtil.execute(() -> {
+            Boolean login = TorrentUtil.login();
+            List<TorrentsInfo> torrentsInfos = login ? TorrentUtil.getTorrentsInfos() : new ArrayList<>();
+
+            for (Ani ani : anis) {
+                if (Boolean.TRUE.equals(deleteTorrent)) {
+                    File torrentDir = TorrentUtil.getTorrentDir(ani);
+                    FileUtil.del(torrentDir);
+                    clearService.clearParentFile(torrentDir);
+                    log.info("删除订阅种子目录 {} {} {}", ani.getTitle(), torrentDir, ani.getId());
+                }
+
+                if (Boolean.TRUE.equals(deleteStrm)) {
+                    strmService.clearLibrary(ani);
+                    log.info("删除订阅 STRM 目录 {} {}", ani.getTitle(), ani.getId());
+                }
+
+                if (!Boolean.TRUE.equals(deleteDownload)) {
+                    continue;
+                }
+
+                File file = new File(downloadService.getDownloadPath(ani));
+                String path = FileUtils.getAbsolutePath(file);
+                for (TorrentsInfo torrentsInfo : torrentsInfos) {
+                    String downloadDir = torrentsInfo.getDownloadDir();
+                    if (downloadDir.equals(path)) {
+                        TorrentUtil.delete(torrentsInfo, true, true);
+                    }
+                }
+                if (!file.exists()) {
+                    continue;
+                }
+                ThreadUtil.sleep(3000);
+                log.info("删除订阅下载目录 {} => {}", ani.getTitle(), file);
+                FileUtil.del(file);
+                clearService.clearParentFile(file);
+            }
+        });
+
+        return Result.success("清理任务已提交");
     }
 
     @Auth

@@ -758,6 +758,24 @@ public class Config implements Serializable {
     private String strmOutputPathTemplate;
 
     /**
+     * STRM 输出路径模版(剧场版)
+     */
+    @Schema(description = "STRM 输出路径模版(剧场版)")
+    private String strmOvaOutputPathTemplate;
+
+    /**
+     * STRM 往季归档路径模版
+     */
+    @Schema(description = "STRM 往季归档路径模版")
+    private String strmArchivePathTemplate;
+
+    /**
+     * STRM 往季归档路径模版(剧场版)
+     */
+    @Schema(description = "STRM 往季归档路径模版(剧场版)")
+    private String strmArchiveOvaPathTemplate;
+
+    /**
      * 重名的订阅将允许被替换
      */
     @Schema(description = "重名订阅允许替换")

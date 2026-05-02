@@ -1,4 +1,5 @@
 <template>
+  <Cleanup ref="cleanupRef"/>
   <Preview ref="preview" :ani="props.ani"/>
   <StandbyRss ref="standbyRss" :ani="props.ani"/>
   <Mikan ref="mikanRef" @callback="mikanCallback"/>
@@ -341,11 +342,29 @@
                 强制STRM目录刮削
               </el-text>
             </el-dropdown-item>
+            <el-dropdown-item @click="scrapePastStrm(false)">
+              <el-text>
+                <el-icon>
+                  <RefreshRight/>
+                </el-icon>
+                往季目录刮削
+              </el-text>
+            </el-dropdown-item>
+            <el-dropdown-item @click="scrapePastStrm(true)">
+              <el-text type="warning">
+                <el-icon>
+                  <Refresh/>
+                </el-icon>
+                强制往季目录刮削
+              </el-text>
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
     </div>
     <div>
+      <el-button @click="archiveCurrentStrm" bg text>往季归档</el-button>
+      <el-button @click="cleanupRef?.show([props.ani])" bg text type="danger">清理本地资源</el-button>
       <el-button @click="preview.show()" bg text icon="Grid">预览</el-button>
       <el-button icon="Check" type="primary" :loading="okLoading" @click="async ()=>{
         okLoading = true
@@ -361,8 +380,9 @@
 import Exclude from "@/config/Exclude.vue";
 import PrioKeys from "@/config/PrioKeys.vue";
 import Preview from "./Preview.vue";
+import Cleanup from "./Cleanup.vue";
 import {onMounted, ref} from "vue";
-import {ElMessage, ElText} from "element-plus";
+import {ElMessage, ElMessageBox, ElText} from "element-plus";
 import StandbyRss from "./StandbyRss.vue";
 import Mikan from "./Mikan.vue";
 import TmdbGroup from "./TmdbGroup.vue";
@@ -379,6 +399,7 @@ let downloadRuleTemplates = ref([])
 
 let preview = ref()
 let okLoading = ref(false)
+let cleanupRef = ref()
 
 let getThemoviedbNameLoading = ref(false)
 
@@ -480,6 +501,31 @@ let scrapeStrm = (force) => {
       .then(res => {
         ElMessage.success(res.message)
       })
+}
+
+let scrapePastStrm = (force) => {
+  http.scrapePastStrm(force, props.ani)
+      .then(res => {
+        ElMessage.success(res.message)
+      })
+}
+
+let archiveCurrentStrm = () => {
+  ElMessageBox.confirm(
+      `是否将 ${props.ani.title} 第${props.ani.season}季 的当前 STRM 归档到往季目录?`,
+      '往季归档',
+      {
+        confirmButtonText: '归档',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+  ).then(() => {
+    http.archiveAniStrm([props.ani.id]).then(res => {
+      ElMessage.success(res.message)
+      window.$reLoadList()
+    })
+  }).catch(() => {
+  })
 }
 
 let mikanShow = () => {

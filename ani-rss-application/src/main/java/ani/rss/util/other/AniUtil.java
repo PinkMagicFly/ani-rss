@@ -69,7 +69,6 @@ public class AniUtil {
             Date releaseDate = ani.getReleaseDate();
             if (Objects.isNull(releaseDate)) {
                 releaseDate = new Date();
-                // 处理旧的日期数据
                 try {
                     Integer year = ani.getYear();
                     Integer month = ani.getMonth();
@@ -81,7 +80,6 @@ public class AniUtil {
                 ani.setReleaseDate(releaseDate);
             }
 
-            // 自动修补缺失的封面
             String image = ani.getImage();
             saveJpg(image);
 
