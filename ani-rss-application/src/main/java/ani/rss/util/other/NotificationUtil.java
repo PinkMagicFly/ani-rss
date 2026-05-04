@@ -48,14 +48,14 @@ public class NotificationUtil {
      * @param text
      * @param notificationStatusEnum
      */
-    public static synchronized void send(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
+    public static void send(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
         List<NotificationTask> tasks = getNotificationTasks(config, ani, text, notificationStatusEnum);
         for (NotificationTask task : tasks) {
             EXECUTOR_SERVICE.execute(() -> execute(task));
         }
     }
 
-    public static synchronized boolean sendAndWait(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
+    public static boolean sendAndWait(Config config, Ani ani, String text, NotificationStatusEnum notificationStatusEnum) {
         List<NotificationTask> tasks = getNotificationTasks(config, ani, text, notificationStatusEnum);
         boolean success = true;
         for (NotificationTask task : tasks) {
