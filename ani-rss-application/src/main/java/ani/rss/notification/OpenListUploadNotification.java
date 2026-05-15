@@ -3,6 +3,7 @@ package ani.rss.notification;
 import ani.rss.commons.FileUtils;
 import ani.rss.commons.GsonStatic;
 import ani.rss.entity.Ani;
+import ani.rss.entity.Config;
 import ani.rss.entity.NotificationConfig;
 import ani.rss.entity.OpenListFileInfo;
 import ani.rss.entity.web.Header;
@@ -10,17 +11,15 @@ import ani.rss.enums.NotificationStatusEnum;
 import ani.rss.enums.StringEnum;
 import ani.rss.service.DownloadService;
 import ani.rss.util.basic.HttpReq;
+import ani.rss.util.other.ConfigUtil;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.lang.Assert;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.core.util.URLUtil;
 import cn.hutool.extra.spring.SpringUtil;
-import cn.hutool.http.HttpConfig;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import com.google.gson.JsonElement;
@@ -33,11 +32,9 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class OpenListUploadNotification implements BaseNotification {
-    /**
-     * 上传配置
-     */
-    private final HttpConfig httpConfig = new HttpConfig()
-            .setBlockSize(1024 * 1024 * 50);
+    private static final long COPY_WAIT_TIMEOUT_MILLIS = 1000L * 60 * 10;
+    private static final long COPY_POLL_INTERVAL_MILLIS = 2000L;
+
     private NotificationConfig notificationConfig;
 
     /**
@@ -235,6 +232,13 @@ public class OpenListUploadNotification implements BaseNotification {
                 if (localFileLength == cloudFileLength) {
                     continue;
                 }
+
+                log.info("云端存在同名文件且大小不一致，删除后重传 {}", name);
+                postApi("fs/remove")
+                        .body(GsonStatic.toJson(Map.of(
+                                "dir", cloudFilePath,
+                                "names", List.of(name)
+                        ))).then(HttpResponse::isOk);
             }
 
             log.info("文件上传: {} => {}", file, cloudFilePath);
@@ -268,32 +272,78 @@ public class OpenListUploadNotification implements BaseNotification {
         }
 
         String openListUploadHost = notificationConfig.getOpenListUploadHost();
-        String openListUploadApiKey = notificationConfig.getOpenListUploadApiKey();
+        String srcFilePath = toOpenListLocalPath(localFilePath);
+        String filename = FileUtil.getName(srcFilePath);
+        String srcDir = FileUtil.getParent(srcFilePath, 1);
+        Assert.notBlank(openListUploadHost, "OpenList Host 未配置");
+        Assert.notBlank(srcDir, "OpenList 本地目录映射失败 {}", localFilePath);
 
-        String url = StrUtil.format("{}/api/fs/put", openListUploadHost);
-
-
-        String filename = FileUtil.getName(localFilePath);
-
-        return HttpReq
-                .put(url)
-                .timeout(1000 * 60 * 2)
-                .setConfig(httpConfig)
-                .header(Header.AUTHORIZATION, openListUploadApiKey)
-                .header("As-Task", "false")
-                .header("File-Path", URLUtil.encode(cloudFilePath + "/" + filename))
-                .contentType("application/octet-stream")
-                .body(ResourceUtil.getResourceObj(localFilePath))
+        JsonObject jsonObject = postApi("fs/copy")
+                .body(GsonStatic.toJson(Map.of(
+                        "src_dir", srcDir,
+                        "dst_dir", cloudFilePath,
+                        "names", List.of(filename)
+                )))
                 .thenFunction(res -> {
                     Assert.isTrue(res.isOk(), "上传失败 {} 状态码:{}", localFilePath, res.getStatus());
-                    JsonObject jsonObject = GsonStatic.fromJson(res.body(), JsonObject.class);
-                    int code = jsonObject.get("code").getAsInt();
-                    log.info(jsonObject.toString());
+                    JsonObject body = GsonStatic.fromJson(res.body(), JsonObject.class);
+                    int code = body.get("code").getAsInt();
+                    log.info(body.toString());
                     Assert.isTrue(code == 200, "上传失败 {} 状态码:{}", localFilePath, code);
-
-                    log.info("OpenList 上传完成 {}", filename);
-                    return true;
+                    return body;
                 });
+
+        waitCopyResult(cloudFilePath, filename, new File(localFilePath).length(), jsonObject);
+        log.info("OpenList 上传完成 {}", filename);
+        return true;
+    }
+
+    private void waitCopyResult(String cloudFilePath, String filename, long localFileLength, JsonObject copyResponse) {
+        long deadline = System.currentTimeMillis() + COPY_WAIT_TIMEOUT_MILLIS;
+        while (System.currentTimeMillis() < deadline) {
+            Optional<OpenListFileInfo> fileInfoOpt = fileList(cloudFilePath)
+                    .stream()
+                    .filter(fileInfo -> Objects.equals(fileInfo.getName(), filename))
+                    .findFirst();
+            if (fileInfoOpt.isPresent()) {
+                Long cloudFileLength = fileInfoOpt.get().getSize();
+                if (Objects.equals(cloudFileLength, localFileLength)) {
+                    return;
+                }
+            }
+            ThreadUtil.sleep(COPY_POLL_INTERVAL_MILLIS);
+        }
+        throw new IllegalArgumentException(StrUtil.format("OpenList 复制超时 {} => {} resp={}", filename, cloudFilePath, copyResponse));
+    }
+
+    private String toOpenListLocalPath(String localFilePath) {
+        Config config = ConfigUtil.CONFIG;
+        String localPathPrefix = StrUtil.blankToDefault(config.getStrmLocalPathPrefix(), "/downloads");
+        String localWebDavPrefix = StrUtil.blankToDefault(config.getStrmLocalWebDavPathPrefix(), "/local");
+
+        String normalizedLocalPrefix = FileUtils.getAbsolutePath(localPathPrefix);
+        String normalizedLocalFilePath = FileUtils.getAbsolutePath(localFilePath);
+        Assert.isTrue(isSubPath(normalizedLocalPrefix, normalizedLocalFilePath),
+                "OpenList 本地路径映射失败 {} prefix={}", localFilePath, normalizedLocalPrefix);
+
+        String relative = StrUtil.removePrefix(normalizedLocalFilePath.substring(normalizedLocalPrefix.length()), "/");
+        return joinPath(localWebDavPrefix, relative);
+    }
+
+    private boolean isSubPath(String parent, String child) {
+        String normalizedParent = FileUtils.getAbsolutePath(parent);
+        String normalizedChild = FileUtils.getAbsolutePath(child);
+        return Objects.equals(normalizedParent, normalizedChild)
+                || normalizedChild.startsWith(normalizedParent + "/");
+    }
+
+    private String joinPath(String base, String relative) {
+        String normalizedBase = StrUtil.removeSuffix(FileUtils.normalize(base), "/");
+        String normalizedRelative = StrUtil.removePrefix(FileUtils.normalize(relative), "/");
+        if (StrUtil.isBlank(normalizedRelative)) {
+            return normalizedBase;
+        }
+        return normalizedBase + "/" + normalizedRelative;
     }
 
     /**
