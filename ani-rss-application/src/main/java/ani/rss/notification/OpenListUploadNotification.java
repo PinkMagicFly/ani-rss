@@ -36,6 +36,7 @@ public class OpenListUploadNotification implements BaseNotification {
     private static final long COPY_POLL_INTERVAL_MILLIS = 2000L;
 
     private NotificationConfig notificationConfig;
+    private final Map<String, String> copyTaskMap = new HashMap<>();
 
     /**
      * 测试
@@ -293,13 +294,18 @@ public class OpenListUploadNotification implements BaseNotification {
                     return body;
                 });
 
+        String copyTaskId = getCopyTaskId(jsonObject);
+        String taskKey = getCopyTaskKey(cloudFilePath, filename);
+        copyTaskMap.put(taskKey, copyTaskId);
         waitCopyResult(cloudFilePath, filename, new File(localFilePath).length(), jsonObject);
+        copyTaskMap.remove(taskKey);
         log.info("OpenList 上传完成 {}", filename);
         return true;
     }
 
     private void waitCopyResult(String cloudFilePath, String filename, long localFileLength, JsonObject copyResponse) {
         long deadline = System.currentTimeMillis() + COPY_WAIT_TIMEOUT_MILLIS;
+        String taskKey = getCopyTaskKey(cloudFilePath, filename);
         while (System.currentTimeMillis() < deadline) {
             Optional<OpenListFileInfo> fileInfoOpt = fileList(cloudFilePath)
                     .stream()
@@ -313,7 +319,39 @@ public class OpenListUploadNotification implements BaseNotification {
             }
             ThreadUtil.sleep(COPY_POLL_INTERVAL_MILLIS);
         }
+        cancelCopyTask(copyTaskMap.get(taskKey));
+        copyTaskMap.remove(taskKey);
         throw new IllegalArgumentException(StrUtil.format("OpenList 复制超时 {} => {} resp={}", filename, cloudFilePath, copyResponse));
+    }
+
+    private String getCopyTaskId(JsonObject copyResponse) {
+        JsonObject data = copyResponse.getAsJsonObject("data");
+        Assert.notNull(data, "OpenList 复制任务缺少 data");
+        JsonElement tasks = data.get("tasks");
+        Assert.notNull(tasks, "OpenList 复制任务缺少 tasks");
+        Assert.isTrue(tasks.isJsonArray() && !tasks.getAsJsonArray().isEmpty(), "OpenList 复制任务缺少 tasks");
+        JsonObject task = tasks.getAsJsonArray().get(0).getAsJsonObject();
+        JsonElement id = task.get("id");
+        Assert.notNull(id, "OpenList 复制任务缺少 id");
+        return id.getAsString();
+    }
+
+    private String getCopyTaskKey(String cloudFilePath, String filename) {
+        return cloudFilePath + "|" + filename;
+    }
+
+    private void cancelCopyTask(String taskId) {
+        if (StrUtil.isBlank(taskId)) {
+            return;
+        }
+        try {
+            postApi("task/copy/cancel?tid=" + taskId)
+                    .thenFunction(HttpResponse::isOk);
+            log.info("取消 OpenList 复制任务 {}", taskId);
+        } catch (Exception e) {
+            log.warn("取消 OpenList 复制任务失败 {}", taskId);
+            log.warn(e.getMessage(), e);
+        }
     }
 
     private String toOpenListLocalPath(String localFilePath) {
