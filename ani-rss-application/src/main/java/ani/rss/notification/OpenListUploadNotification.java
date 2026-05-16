@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class OpenListUploadNotification implements BaseNotification {
-    private static final long COPY_WAIT_TIMEOUT_MILLIS = 1000L * 60 * 10;
+    private static final long COPY_WAIT_TIMEOUT_MILLIS = 1000L * 60 * 15;
     private static final long COPY_POLL_INTERVAL_MILLIS = 2000L;
 
     private NotificationConfig notificationConfig;
