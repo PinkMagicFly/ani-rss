@@ -20,6 +20,7 @@ import cn.hutool.core.util.*;
 import lombok.extern.slf4j.Slf4j;
 import org.w3c.dom.*;
 
+import java.io.File;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -294,14 +295,11 @@ public class ItemsUtil {
         return ReUtil.contains("国语|國語|国配|國配|普通话|普通話|中配|华语|華語|Mandarin|mandarin|中文配音", title);
     }
 
-    public static synchronized List<Integer> omitList(Ani ani, List<Item> items) {
+    public static synchronized List<Integer> omitList(Ani ani) {
         ArrayList<Integer> list = new ArrayList<>();
         Config config = ConfigUtil.CONFIG;
         Boolean omit = config.getOmit();
         if (!omit) {
-            return list;
-        }
-        if (items.isEmpty()) {
             return list;
         }
 
@@ -314,15 +312,41 @@ public class ItemsUtil {
             return list;
         }
 
-        int[] array = items.stream().mapToInt(o -> o.getEpisode().intValue()).distinct().toArray();
-        int max = ArrayUtil.max(array);
-        int min = ArrayUtil.min(array);
+        File torrentDir = TorrentUtil.getTorrentDir(ani);
+        File[] markerFiles = torrentDir.listFiles(file ->
+                file.isFile()
+                        && StrUtil.endWithIgnoreCase(file.getName(), ".episode")
+                        && ReUtil.contains(StringEnum.SEASON_REG, file.getName()));
+        if (ArrayUtil.isEmpty(markerFiles)) {
+            return list;
+        }
+
+        int season = ani.getSeason();
+        TreeSet<Integer> episodes = new TreeSet<>();
+        for (File markerFile : markerFiles) {
+            String name = markerFile.getName();
+            String seasonStr = ReUtil.get(StringEnum.SEASON_REG, name, 1);
+            String episodeStr = ReUtil.get(StringEnum.SEASON_REG, name, 2);
+            if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
+                continue;
+            }
+            if (season != Integer.parseInt(seasonStr)) {
+                continue;
+            }
+            episodes.add(Double.valueOf(episodeStr).intValue());
+        }
+        if (episodes.isEmpty()) {
+            return list;
+        }
+
+        int max = episodes.last();
+        int min = episodes.first();
         if (max == min) {
             return list;
         }
 
         for (int ep = min; ep <= max; ep++) {
-            if (ArrayUtil.contains(array, ep)) {
+            if (episodes.contains(ep)) {
                 // 包含该集
                 continue;
             }
@@ -339,11 +363,10 @@ public class ItemsUtil {
      * 检测是否缺集
      *
      * @param ani
-     * @param items
      */
-    public static synchronized void omit(Ani ani, List<Item> items) {
+    public static synchronized void omit(Ani ani) {
         Config config = ConfigUtil.CONFIG;
-        List<Integer> list = omitList(ani, items);
+        List<Integer> list = omitList(ani);
 
         if (list.isEmpty()) {
             return;

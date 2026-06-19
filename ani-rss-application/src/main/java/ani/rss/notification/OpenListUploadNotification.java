@@ -355,9 +355,8 @@ public class OpenListUploadNotification implements BaseNotification {
     }
 
     private String toOpenListLocalPath(String localFilePath) {
-        Config config = ConfigUtil.CONFIG;
-        String localPathPrefix = StrUtil.blankToDefault(config.getStrmLocalPathPrefix(), "/downloads");
-        String localWebDavPrefix = StrUtil.blankToDefault(config.getStrmLocalWebDavPathPrefix(), "/local");
+        String localPathPrefix = StrUtil.blankToDefault(notificationConfig.getOpenListUploadLocalPathPrefix(), "/downloads");
+        String localOpenListPathPrefix = StrUtil.blankToDefault(notificationConfig.getOpenListUploadLocalOpenListPathPrefix(), "/local");
 
         String normalizedLocalPrefix = FileUtils.getAbsolutePath(localPathPrefix);
         String normalizedLocalFilePath = FileUtils.getAbsolutePath(localFilePath);
@@ -365,7 +364,7 @@ public class OpenListUploadNotification implements BaseNotification {
                 "OpenList 本地路径映射失败 {} prefix={}", localFilePath, normalizedLocalPrefix);
 
         String relative = StrUtil.removePrefix(normalizedLocalFilePath.substring(normalizedLocalPrefix.length()), "/");
-        return joinPath(localWebDavPrefix, relative);
+        return joinPath(localOpenListPathPrefix, relative);
     }
 
     private boolean isSubPath(String parent, String child) {

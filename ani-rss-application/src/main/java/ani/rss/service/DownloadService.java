@@ -116,7 +116,7 @@ public class DownloadService {
             mainItems = new ArrayList<>();
         }
         boolean subgroupChanged = refreshAniSubgroup(ani, mainItems);
-        ItemsUtil.omit(ani, mainItems);
+        ItemsUtil.omit(ani);
         log.debug("{} 主RSS共 {} 个", title, mainItems.size());
 
         List<Item> checkedItems = new ArrayList<>(mainItems);

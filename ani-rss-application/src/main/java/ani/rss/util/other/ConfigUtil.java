@@ -229,16 +229,6 @@ public class ConfigUtil {
                 .setTmdbIdPlexMode(false)
                 .setProxyList(proxyList)
                 .setScrape(false)
-                .setStrm(false)
-                .setStrmBaseUrl("")
-                .setStrmWebDavBaseUrl("")
-                .setStrmLocalPathPrefix("/downloads")
-                .setStrmLocalWebDavPathPrefix("/local")
-                .setStrmCloudWebDavPathPrefix("")
-                .setStrmOutputPathTemplate("")
-                .setStrmOvaOutputPathTemplate("")
-                .setStrmArchivePathTemplate("")
-                .setStrmArchiveOvaPathTemplate("")
                 .setReplace(false)
                 .setMaxFileNameLength(0)
                 .setLimitLoginAttempts(true)
@@ -490,9 +480,7 @@ public class ConfigUtil {
                 Config::getDownloadToolHost,
                 Config::getMikanHost,
                 Config::getTmdbApi,
-                Config::getCustomGithubUrl,
-                Config::getStrmBaseUrl,
-                Config::getStrmWebDavBaseUrl
+                Config::getCustomGithubUrl
         );
 
         DynaBean dynaBean = DynaBean.create(config);
@@ -514,9 +502,7 @@ public class ConfigUtil {
         List<Func1<Config, String>> func1List = List.of(
                 Config::getDownloadPathTemplate,
                 Config::getOvaDownloadPathTemplate,
-                Config::getCompletedPathTemplate,
-                Config::getStrmLocalPathPrefix,
-                Config::getStrmOutputPathTemplate
+                Config::getCompletedPathTemplate
         );
 
         DynaBean dynaBean = DynaBean.create(config);

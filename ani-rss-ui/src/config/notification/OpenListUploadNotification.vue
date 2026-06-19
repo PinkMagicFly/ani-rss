@@ -16,6 +16,16 @@
           v-model="notificationConfig['openListUploadOvaPath']"
           placeholder="/115/Media/剧场版/${title}"/>
     </el-form-item>
+    <el-form-item label="本地路径前缀">
+      <el-input
+          v-model="notificationConfig['openListUploadLocalPathPrefix']"
+          placeholder="/downloads"/>
+    </el-form-item>
+    <el-form-item label="OpenList 本地挂载">
+      <el-input
+          v-model="notificationConfig['openListUploadLocalOpenListPathPrefix']"
+          placeholder="/local"/>
+    </el-form-item>
     <el-form-item label="其他">
       <div>
         <el-checkbox v-model="notificationConfig['openListUploadDeleteLocalFile']" label="上传完成后删除本地文件"/>

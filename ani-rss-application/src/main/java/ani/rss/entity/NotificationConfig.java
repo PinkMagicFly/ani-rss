@@ -254,6 +254,18 @@ public class NotificationConfig implements Serializable {
     private String openListUploadOvaPath;
 
     /**
+     * OpenList 本地文件系统前缀
+     */
+    @Schema(description = "OpenList 本地文件系统前缀")
+    private String openListUploadLocalPathPrefix;
+
+    /**
+     * OpenList 本地挂载路径前缀
+     */
+    @Schema(description = "OpenList 本地挂载路径前缀")
+    private String openListUploadLocalOpenListPathPrefix;
+
+    /**
      * 上传完成后删除本地文件
      */
     @Schema(description = "上传完成后删除本地文件")
@@ -351,6 +363,8 @@ public class NotificationConfig implements Serializable {
                 .setOpenListUploadApiKey("")
                 .setOpenListUploadPath("/115/Media/番剧/${title}/Season ${season}")
                 .setOpenListUploadOvaPath("/115/Media/剧场版/${title}")
+                .setOpenListUploadLocalPathPrefix("/downloads")
+                .setOpenListUploadLocalOpenListPathPrefix("/local")
                 .setOpenListUploadDeleteLocalFile(false)
                 .setOpenListUploadDeleteOldEpisode(false);
 

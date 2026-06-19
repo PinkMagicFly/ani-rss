@@ -454,7 +454,7 @@ public class AniController extends BaseController {
             }
         }
 
-        List<Integer> omitList = ItemsUtil.omitList(ani, items);
+        List<Integer> omitList = ItemsUtil.omitList(ani);
 
         Map<String, Object> map = Map.of(
                 "downloadPath", downloadPath,

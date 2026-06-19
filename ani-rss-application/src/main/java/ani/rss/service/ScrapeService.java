@@ -11,7 +11,6 @@ import cn.hutool.core.util.ReUtil;
 import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import wushuo.tmdb.api.entity.*;
 import wushuo.tmdb.api.enums.TmdbTypeEnum;
@@ -20,7 +19,6 @@ import java.io.File;
 import java.io.InputStream;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * 刮削
@@ -32,13 +30,8 @@ public class ScrapeService {
     @Resource
     private NfoGenerator nfoGenerator;
 
-    @Lazy
     @Resource
     private DownloadService downloadService;
-
-    @Lazy
-    @Resource
-    private StrmService strmService;
 
     /**
      * 刮削
@@ -52,7 +45,6 @@ public class ScrapeService {
         Tmdb tmdb = ani.getTmdb();
 
         if (Objects.isNull(tmdb)) {
-            strmService.syncLibrary(ani);
             return;
         }
 
@@ -68,40 +60,6 @@ public class ScrapeService {
             log.info("刮削完成 {}", title);
         } catch (Exception e) {
             log.error("刮削错误 {}", title);
-            log.error(e.getMessage(), e);
-        } finally {
-            strmService.syncLibrary(ani);
-        }
-    }
-
-    public void scrapeStrm(Ani ani, Boolean force) {
-        scrapeStrmInternal(ani, force, false);
-    }
-
-    public void scrapePastStrm(Ani ani, Boolean force) {
-        scrapeStrmInternal(ani, force, true);
-    }
-
-    private void scrapeStrmInternal(Ani ani, Boolean force, boolean pastOnly) {
-        String title = ani.getTitle();
-        Tmdb tmdb = ani.getTmdb();
-
-        if (Objects.isNull(tmdb)) {
-            return;
-        }
-
-        boolean isForce = Boolean.TRUE.equals(force);
-        boolean isOva = Boolean.TRUE.equals(ani.getOva());
-        try {
-            log.info("正在刮削 {} ... {}", pastOnly ? "往季目录" : "STRM 目录", title);
-            if (isOva) {
-                scrapeStrmMovie(ani, isForce, pastOnly);
-            } else {
-                scrapeStrmTv(ani, isForce, pastOnly);
-            }
-            log.info("{}刮削完成 {}", pastOnly ? "往季目录" : "STRM 目录", title);
-        } catch (Exception e) {
-            log.error("{}刮削错误 {}", pastOnly ? "往季目录" : "STRM 目录", title);
             log.error(e.getMessage(), e);
         }
     }
@@ -132,7 +90,7 @@ public class ScrapeService {
             return;
         }
 
-        Optional<File> first = Stream.of(files)
+        Optional<File> first = Arrays.stream(files)
                 .filter(file -> {
                     String extName = FileUtil.extName(file);
                     if (StrUtil.isBlank(extName)) {
@@ -181,61 +139,6 @@ public class ScrapeService {
         String extName = FileUtil.extName(logoPath);
         File logoFile = new File(downloadPath + "/clearlogo." + extName);
         saveImages(logoPath, logoFile, force);
-    }
-
-    public void scrapeStrmMovie(Ani ani, Boolean force, boolean pastOnly) throws Exception {
-        Tmdb tmdb = ani.getTmdb();
-
-        Optional<Tmdb> tmdbOptional = TmdbUtils.getTmdb(tmdb, TmdbTypeEnum.MOVIE);
-        if (tmdbOptional.isEmpty()) {
-            log.warn("获取tmdb失败 {}", tmdb.getId());
-            return;
-        }
-        tmdb = tmdbOptional.get();
-
-        List<File> libraryDirs = getTargetLibraryDirs(ani, pastOnly);
-        for (File libraryDir : libraryDirs) {
-            Optional<File> mediaFile = FileUtil.loopFiles(libraryDir, file ->
-                            file.isFile() && isVideoOrStrm(file.getName()))
-                    .stream()
-                    .max(Comparator.comparingLong(File::length));
-
-            if (mediaFile.isEmpty()) {
-                continue;
-            }
-
-            File file = mediaFile.get();
-            String mainName = FileUtil.mainName(file);
-
-            String outputPath = libraryDir + "/" + mainName + ".nfo";
-            if (force || !FileUtil.exist(outputPath)) {
-                nfoGenerator.generateMovieNfo(tmdb, outputPath);
-            }
-
-            String posterPath = tmdb.getPosterPath();
-            String fanartPath = tmdb.getBackdropPath();
-
-            String posterExtName = FileUtil.extName(posterPath);
-            String fanartExtName = FileUtil.extName(fanartPath);
-
-            File posterFile = new File(libraryDir + "/poster." + posterExtName);
-            File fanartFile = new File(libraryDir + "/fanart." + fanartExtName);
-
-            saveImages(posterPath, posterFile, force);
-            saveImages(fanartPath, fanartFile, force);
-
-            TmdbImages tmdbImages = TmdbUtils.getTmdbImages(tmdb, TmdbTypeEnum.MOVIE);
-            List<TmdbImage> logos = tmdbImages.getLogos();
-            if (logos.isEmpty()) {
-                continue;
-            }
-
-            TmdbImage tmdbImage = logos.get(0);
-            String logoPath = tmdbImage.getFilePath();
-            String extName = FileUtil.extName(logoPath);
-            File logoFile = new File(libraryDir + "/clearlogo." + extName);
-            saveImages(logoPath, logoFile, force);
-        }
     }
 
     /**
@@ -370,134 +273,6 @@ public class ScrapeService {
                 nfoGenerator.generateEpisodeNfo(tmdbEpisode, episodeFile);
             }
         }
-    }
-
-    public void scrapeStrmTv(Ani ani, Boolean force, boolean pastOnly) throws Exception {
-        Tmdb tmdb = ani.getTmdb();
-
-        Optional<Tmdb> tmdbOptional = TmdbUtils.getTmdb(tmdb, TmdbTypeEnum.TV);
-        if (tmdbOptional.isEmpty()) {
-            log.warn("获取tmdb失败 {}", tmdb.getId());
-            return;
-        }
-        tmdb = tmdbOptional.get();
-
-        Integer season = ani.getSeason();
-        Optional<TmdbSeason> optional = TmdbUtils.getTmdbSeason(tmdb, season);
-        if (optional.isEmpty()) {
-            return;
-        }
-        TmdbSeason tmdbSeason = optional.get();
-        String seasonFormat = String.format("%02d", season);
-
-        Map<Integer, TmdbEpisode> episodeMap = tmdbSeason
-                .getEpisodes()
-                .stream()
-                .collect(Collectors.toMap(TmdbEpisode::getEpisodeNumber, it -> it));
-
-        List<File> libraryDirs = getTargetLibraryDirs(ani, pastOnly);
-        for (File seasonDir : libraryDirs) {
-            if (!FileUtil.exist(seasonDir)) {
-                continue;
-            }
-
-            File showDir = seasonDir.getParentFile();
-            if (Objects.isNull(showDir)) {
-                continue;
-            }
-
-            String tvShowNfoFile = showDir + "/tvshow.nfo";
-            if (force || !FileUtil.exist(tvShowNfoFile)) {
-                nfoGenerator.generateTvShowNfo(tmdb, tvShowNfoFile);
-            }
-
-            String posterPath = tmdb.getPosterPath();
-            String fanartPath = tmdb.getBackdropPath();
-
-            String posterExtName = FileUtil.extName(posterPath);
-            String fanartExtName = FileUtil.extName(fanartPath);
-
-            File posterFile = new File(showDir + "/poster." + posterExtName);
-            File fanartFile = new File(showDir + "/fanart." + fanartExtName);
-
-            saveImages(posterPath, posterFile, force);
-            saveImages(fanartPath, fanartFile, force);
-
-            TmdbImages tmdbImages = TmdbUtils.getTmdbImages(tmdb, TmdbTypeEnum.TV);
-            List<TmdbImage> logos = tmdbImages.getLogos();
-            if (!logos.isEmpty()) {
-                TmdbImage tmdbImage = logos.get(0);
-                String logoPath = tmdbImage.getFilePath();
-                String extName = FileUtil.extName(logoPath);
-                File logoFile = new File(showDir + "/clearlogo." + extName);
-                saveImages(logoPath, logoFile, force);
-            }
-
-            String seasonPosterPath = StrUtil.blankToDefault(tmdbSeason.getPosterPath(), posterPath);
-            String seasonPosterExtName = FileUtil.extName(seasonPosterPath);
-            File seasonPosterFile = new File(showDir + "/season" + seasonFormat + "-poster." + seasonPosterExtName);
-            saveImages(seasonPosterPath, seasonPosterFile, force);
-
-            String seasonNfoFile = seasonDir + "/season.nfo";
-            if (force || !FileUtil.exist(seasonNfoFile)) {
-                nfoGenerator.generateSeasonNfo(tmdbSeason, seasonNfoFile);
-            }
-
-            File[] files = FileUtils.listFiles(seasonDir);
-            for (File file : files) {
-                if (!file.isFile() || !isVideoOrStrm(file.getName())) {
-                    continue;
-                }
-
-                String mainName = FileUtil.mainName(file);
-                if (!ReUtil.contains(StringEnum.SEASON_REG, mainName)) {
-                    continue;
-                }
-
-                int seasonNumber = Integer.parseInt(ReUtil.get(StringEnum.SEASON_REG, mainName, 1));
-                if (season != seasonNumber) {
-                    continue;
-                }
-
-                Integer episodeNumber = Integer.parseInt(ReUtil.get(StringEnum.SEASON_REG, mainName, 2));
-                if (!episodeMap.containsKey(episodeNumber)) {
-                    continue;
-                }
-
-                TmdbEpisode tmdbEpisode = episodeMap.get(episodeNumber);
-
-                String thumbPath = tmdbEpisode.getStillPath();
-                if (StrUtil.isNotBlank(thumbPath)) {
-                    String thumbExtName = FileUtil.extName(thumbPath);
-                    File thumbFile = new File(seasonDir + "/" + mainName + "-thumb." + thumbExtName);
-                    saveImages(thumbPath, thumbFile, force);
-                }
-
-                String episodeFile = seasonDir + "/" + mainName + ".nfo";
-                if (force || !FileUtil.exist(episodeFile)) {
-                    nfoGenerator.generateEpisodeNfo(tmdbEpisode, episodeFile);
-                }
-            }
-        }
-    }
-
-    private boolean isVideoOrStrm(String name) {
-        String extName = FileUtil.extName(name);
-        if (StrUtil.isBlank(extName)) {
-            return false;
-        }
-        return FileUtils.isVideoFormat(extName) || "strm".equalsIgnoreCase(extName);
-    }
-
-    private List<File> getTargetLibraryDirs(Ani ani, boolean pastOnly) {
-        if (pastOnly) {
-            return strmService.getExistingPastSeasonArchiveDir(ani)
-                    .map(List::of)
-                    .orElse(List.of());
-        }
-        return strmService.getExistingLibrarySeasonDir(ani)
-                .map(List::of)
-                .orElse(List.of());
     }
 
     /**
