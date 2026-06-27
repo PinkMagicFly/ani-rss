@@ -312,29 +312,7 @@ public class ItemsUtil {
             return list;
         }
 
-        File torrentDir = TorrentUtil.getTorrentDir(ani);
-        File[] markerFiles = torrentDir.listFiles(file ->
-                file.isFile()
-                        && StrUtil.endWithIgnoreCase(file.getName(), ".episode")
-                        && ReUtil.contains(StringEnum.SEASON_REG, file.getName()));
-        if (ArrayUtil.isEmpty(markerFiles)) {
-            return list;
-        }
-
-        int season = ani.getSeason();
-        TreeSet<Integer> episodes = new TreeSet<>();
-        for (File markerFile : markerFiles) {
-            String name = markerFile.getName();
-            String seasonStr = ReUtil.get(StringEnum.SEASON_REG, name, 1);
-            String episodeStr = ReUtil.get(StringEnum.SEASON_REG, name, 2);
-            if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
-                continue;
-            }
-            if (season != Integer.parseInt(seasonStr)) {
-                continue;
-            }
-            episodes.add(Double.valueOf(episodeStr).intValue());
-        }
+        TreeSet<Integer> episodes = episodeMarkerNumbers(ani);
         if (episodes.isEmpty()) {
             return list;
         }
@@ -357,6 +335,43 @@ public class ItemsUtil {
             list.add(ep);
         }
         return list;
+    }
+
+    public static synchronized TreeSet<Integer> episodeMarkerNumbers(Ani ani) {
+        TreeSet<Integer> episodes = new TreeSet<>();
+        File torrentDir = TorrentUtil.getTorrentDir(ani);
+        File[] markerFiles = torrentDir.listFiles(file ->
+                file.isFile()
+                        && StrUtil.endWithIgnoreCase(file.getName(), ".episode")
+                        && ReUtil.contains(StringEnum.SEASON_REG, file.getName()));
+        if (ArrayUtil.isEmpty(markerFiles)) {
+            return episodes;
+        }
+
+        int season = ani.getSeason();
+        for (File markerFile : markerFiles) {
+            String name = markerFile.getName();
+            String seasonStr = ReUtil.get(StringEnum.SEASON_REG, name, 1);
+            String episodeStr = ReUtil.get(StringEnum.SEASON_REG, name, 2);
+            if (StrUtil.isBlank(seasonStr) || StrUtil.isBlank(episodeStr)) {
+                continue;
+            }
+            if (season != Integer.parseInt(seasonStr)) {
+                continue;
+            }
+            episodes.add(Double.valueOf(episodeStr).intValue());
+        }
+        return episodes;
+    }
+
+    public static synchronized boolean episodeMarkersCompleted(Ani ani) {
+        Integer totalEpisodeNumber = ani.getTotalEpisodeNumber();
+        if (Objects.isNull(totalEpisodeNumber) || totalEpisodeNumber < 1) {
+            return false;
+        }
+
+        TreeSet<Integer> episodes = episodeMarkerNumbers(ani);
+        return episodes.size() == totalEpisodeNumber;
     }
 
     /**

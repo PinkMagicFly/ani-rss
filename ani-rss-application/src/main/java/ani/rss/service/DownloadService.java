@@ -125,7 +125,6 @@ public class DownloadService {
 
         boolean sync = sourceResult.sync();
         int addedCount = sourceResult.addedCount();
-        int currentDownloadCount = sourceResult.currentDownloadCount();
 
         if (addedCount == 0 && config.getStandbyRss()) {
             List<StandbyRss> standbyRssList = ani.getStandbyRssList();
@@ -140,7 +139,6 @@ public class DownloadService {
                         count = sourceResult.count();
                         sync = sync || sourceResult.sync();
                         addedCount += sourceResult.addedCount();
-                        currentDownloadCount += sourceResult.currentDownloadCount();
                         subgroupChanged = refreshAniSubgroup(ani, standbyItems) || subgroupChanged;
                         if (sourceResult.addedCount() > 0) {
                             break;
@@ -174,7 +172,7 @@ public class DownloadService {
         if (totalEpisodeNumber < 1) {
             return result;
         }
-        if (currentDownloadCount >= totalEpisodeNumber) {
+        if (ItemsUtil.episodeMarkersCompleted(ani)) {
             log.info("{} 第 {} 季 共 {} 集 已全部下载完成, 自动停止订阅", title, season, totalEpisodeNumber);
             NotificationUtil.send(config, ani, StrFormatter.format("{} 订阅已完结", title), NotificationStatusEnum.COMPLETED);
             ani.setEnable(false);
@@ -183,7 +181,7 @@ public class DownloadService {
         return result;
     }
 
-    private record SourceDownloadResult(long count, int currentDownloadCount, int addedCount, boolean sync) {
+    private record SourceDownloadResult(long count, int addedCount, boolean sync) {
     }
 
     private SourceDownloadResult downloadSource(Ani ani,
@@ -201,30 +199,21 @@ public class DownloadService {
 
         boolean sync = false;
         int addedCount = 0;
-        int currentDownloadCount = 0;
 
         for (Item item : items) {
             log.debug(JSONUtil.formatJsonStr(GsonStatic.toJson(item)));
             String reName = item.getReName();
-            Boolean master = item.getMaster();
             File torrentFile = TorrentUtil.getTorrent(ani, item);
             String hash = FileUtil.mainName(torrentFile)
                     .trim().toLowerCase();
 
             Double episode = item.getEpisode();
-            boolean is5 = ItemsUtil.is5(episode);
 
             if (TorrentUtil.exists(ani, item)) {
-                if (master && !is5) {
-                    currentDownloadCount++;
-                }
                 continue;
             }
 
             if (notDownload.contains(episode)) {
-                if (master && !is5) {
-                    currentDownloadCount++;
-                }
                 log.debug("已被禁止下载: {}", reName);
                 continue;
             }
@@ -238,15 +227,9 @@ public class DownloadService {
                     String pubDateFormat = DateUtil.format(pubDate, "yyyy-MM-dd");
                     String newPubDateFormat = DateUtil.format(newPubDate, "yyyy-MM-dd");
                     if (!pubDateFormat.equals(newPubDateFormat)) {
-                        if (master && !is5) {
-                            currentDownloadCount++;
-                        }
                         continue;
                     }
                 } else if (item != newItem) {
-                    if (master && !is5) {
-                        currentDownloadCount++;
-                    }
                     continue;
                 }
             }
@@ -263,16 +246,10 @@ public class DownloadService {
             if (torrentsInfos
                     .stream()
                     .anyMatch(torrentsInfo -> torrentsInfo.getHash().equals(hash))) {
-                if (master && !is5) {
-                    currentDownloadCount++;
-                }
                 continue;
             }
 
             if (itemDownloaded(ani, item, true)) {
-                if (master && !is5) {
-                    currentDownloadCount++;
-                }
                 continue;
             }
 
@@ -293,21 +270,17 @@ public class DownloadService {
             }
 
             if (!AniUtil.ANI_LIST.contains(ani)) {
-                return new SourceDownloadResult(count, currentDownloadCount, addedCount, sync);
+                return new SourceDownloadResult(count, addedCount, sync);
             }
 
             if (download(ani, item, savePath, saveTorrent)) {
                 sync = true;
                 addedCount++;
-
-                if (master && !is5) {
-                    currentDownloadCount++;
-                }
                 count++;
             }
         }
 
-        return new SourceDownloadResult(count, currentDownloadCount, addedCount, sync);
+        return new SourceDownloadResult(count, addedCount, sync);
     }
 
     /**
