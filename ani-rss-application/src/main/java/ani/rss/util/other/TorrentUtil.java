@@ -100,6 +100,10 @@ public class TorrentUtil {
         if (Objects.isNull(item)) {
             return "";
         }
+        String episodeMarkerToken = item.getEpisodeMarkerToken();
+        if (StrUtil.isNotBlank(episodeMarkerToken)) {
+            return episodeMarkerToken;
+        }
         String reName = item.getReName();
         if (StrUtil.isBlank(reName)) {
             return "";

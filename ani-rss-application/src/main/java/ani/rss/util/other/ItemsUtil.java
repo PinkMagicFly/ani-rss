@@ -418,36 +418,12 @@ public class ItemsUtil {
         NotificationUtil.send(config, ani, CollUtil.join(sList, "\n"), NotificationStatusEnum.OMIT);
     }
 
-    public static int currentEpisodeNumber(Ani ani, List<Item> items) {
-        Config config = ConfigUtil.CONFIG;
-        Boolean standbyRss = config.getStandbyRss();
-        Boolean coexist = config.getCoexist();
-        if (standbyRss && coexist) {
-            // 开启多字幕组共存模式则只计算主rss集数
-            items = items.stream()
-                    .filter(Item::getMaster)
-                    .toList();
-        }
-
-        // 过滤掉x.5集
-        items = items
-                .stream()
-                .filter(it -> it.getEpisode() == it.getEpisode().intValue())
-                .toList();
-
-        if (items.isEmpty()) {
+    public static int currentEpisodeNumber(Ani ani) {
+        TreeSet<Integer> episodes = episodeMarkerNumbers(ani);
+        if (episodes.isEmpty()) {
             return 0;
         }
-
-        Boolean downloadNew = ani.getDownloadNew();
-        if (downloadNew) {
-            return items
-                    .stream()
-                    .mapToInt(item -> item.getEpisode().intValue())
-                    .max()
-                    .orElse(0);
-        }
-        return items.size();
+        return episodes.last();
     }
 
     /**

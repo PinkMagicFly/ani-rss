@@ -75,6 +75,16 @@
                   <el-input-number v-model:model-value="data.ani.offset"/>
                 </div>
               </el-form-item>
+              <el-form-item label="偏移作用">
+                <div class="form-item-flex">
+                  <el-radio-group :model-value="data.ani.offsetScope || 'BOTH'"
+                                  @update:model-value="value => data.ani.offsetScope = value">
+                    <el-radio-button label="BOTH">全部</el-radio-button>
+                    <el-radio-button label="RENAME">仅文件</el-radio-button>
+                    <el-radio-button label="EPISODE">仅episode</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </el-form-item>
               <el-form-item label="日期">
                 <div class="form-item-flex">
                   <el-date-picker

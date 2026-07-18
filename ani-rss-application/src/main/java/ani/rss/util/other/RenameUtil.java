@@ -68,16 +68,20 @@ public class RenameUtil {
             return false;
         }
 
-        double episode = Double.parseDouble(episodeStr) + offset;
-        item.setEpisode(episode);
+        double sourceEpisode = Double.parseDouble(episodeStr);
+        double renameEpisode = sourceEpisode + (isOffsetRename(ani) ? offset : 0);
+        double markerEpisode = sourceEpisode + (isOffsetEpisode(ani) ? offset : 0);
+        item
+                .setEpisode(renameEpisode)
+                .setEpisodeMarkerToken(getSeasonEpisodeToken(season, markerEpisode));
 
         String seasonFormat = String.format("%02d", season);
-        String episodeFormat = String.format("%02d", (int) episode);
+        String episodeFormat = String.format("%02d", (int) renameEpisode);
 
-        episodeStr = String.valueOf((int) episode);
+        episodeStr = String.valueOf((int) renameEpisode);
 
         // x.5
-        boolean is5 = ItemsUtil.is5(episode);
+        boolean is5 = ItemsUtil.is5(renameEpisode);
 
         boolean skip5 = config.getSkip5();
         if (skip5 && is5) {
@@ -107,7 +111,7 @@ public class RenameUtil {
         renameTemplate = renameTemplate.replace("${tmdbid}", tmdbId);
         renameTemplate = renameTemplate.replace("${title}", title);
 
-        renameTemplate = replaceEpisodeTitle(renameTemplate, episode, ani);
+        renameTemplate = replaceEpisodeTitle(renameTemplate, renameEpisode, ani);
 
         String bgmId = BgmUtil.getSubjectId(ani);
         renameTemplate = renameTemplate.replace("${bgmId}", bgmId);
@@ -136,6 +140,24 @@ public class RenameUtil {
         item
                 .setReName(reName);
         return true;
+    }
+
+    private static boolean isOffsetRename(Ani ani) {
+        String offsetScope = StrUtil.blankToDefault(ani.getOffsetScope(), Ani.OFFSET_SCOPE_BOTH);
+        return !Ani.OFFSET_SCOPE_EPISODE.equals(offsetScope);
+    }
+
+    private static boolean isOffsetEpisode(Ani ani) {
+        String offsetScope = StrUtil.blankToDefault(ani.getOffsetScope(), Ani.OFFSET_SCOPE_BOTH);
+        return !Ani.OFFSET_SCOPE_RENAME.equals(offsetScope);
+    }
+
+    private static String getSeasonEpisodeToken(int season, double episode) {
+        String episodeFormat = String.format("%02d", (int) episode);
+        if (ItemsUtil.is5(episode)) {
+            episodeFormat = episodeFormat + ".5";
+        }
+        return StrFormatter.format("S{}E{}", String.format("%02d", season), episodeFormat);
     }
 
     /**

@@ -36,6 +36,11 @@ public class AniUtil {
 
     public static final List<Ani> ANI_LIST = new CopyOnWriteArrayList<>();
     public static final String FILE_NAME = "ani.v2.json";
+    private static final List<String> OFFSET_SCOPE_LIST = List.of(
+            Ani.OFFSET_SCOPE_RENAME,
+            Ani.OFFSET_SCOPE_EPISODE,
+            Ani.OFFSET_SCOPE_BOTH
+    );
 
     /**
      * 获取订阅配置文件
@@ -160,6 +165,7 @@ public class AniUtil {
                 .setDownloadNew(downloadNew)
                 // 是否启用全局排除
                 .setGlobalExclude(enabledExclude)
+                .setOffsetScope(StrUtil.blankToDefault(ani.getOffsetScope(), Ani.OFFSET_SCOPE_BOTH))
                 // type mikan or other
                 .setType(type);
 
@@ -260,6 +266,7 @@ public class AniUtil {
         List<String> exclude = ani.getExclude();
         Integer season = ani.getSeason();
         Integer offset = ani.getOffset();
+        String offsetScope = ani.getOffsetScope();
         String title = ani.getTitle();
         Assert.notBlank(url, "RSS URL 不能为空");
         if (Objects.isNull(exclude)) {
@@ -268,6 +275,10 @@ public class AniUtil {
         Assert.notNull(season, "季不能为空");
         Assert.notBlank(title, "标题不能为空");
         Assert.notNull(offset, "集数偏移不能为空");
+        if (StrUtil.isBlank(offsetScope)) {
+            ani.setOffsetScope(Ani.OFFSET_SCOPE_BOTH);
+        }
+        Assert.isTrue(OFFSET_SCOPE_LIST.contains(ani.getOffsetScope()), "集数偏移作用范围错误");
 
         Boolean customRssScheduleEnable = ani.getCustomRssScheduleEnable();
         List<Integer> rssScheduleWeeks = ani.getRssScheduleWeeks();
@@ -434,6 +445,7 @@ public class AniUtil {
                 .setMikanTitle("")
                 .setStandbyRssList(new ArrayList<>())
                 .setOffset(0)
+                .setOffsetScope(Ani.OFFSET_SCOPE_BOTH)
                 .setReleaseDate(new DateTime())
                 .setEnable(true)
                 .setOva(false)

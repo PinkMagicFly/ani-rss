@@ -45,6 +45,12 @@ public class Item implements Serializable {
     private Double episode;
 
     /**
+     * episode 标记文件名中的季集标识
+     */
+    @Schema(description = "episode 标记文件名中的季集标识")
+    private String episodeMarkerToken;
+
+    /**
      * 大小
      */
     @Schema(description = "大小")

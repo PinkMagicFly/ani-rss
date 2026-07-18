@@ -341,6 +341,7 @@ let batchAddition = async () => {
         "url": item[0]['rss'],
         "season": 1,
         "offset": 0,
+        "offsetScope": "BOTH",
         "title": "",
         "exclude": [],
         "totalEpisodeNumber": 0,

@@ -153,7 +153,7 @@ public class DownloadService {
         }
 
         if (sync) {
-            int size = ItemsUtil.currentEpisodeNumber(ani, checkedItems);
+            int size = ItemsUtil.currentEpisodeNumber(ani);
             // 更新当前集数
             ani.setCurrentEpisodeNumber(size);
             // 更新下载时间

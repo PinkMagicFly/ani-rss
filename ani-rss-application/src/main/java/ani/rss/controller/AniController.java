@@ -108,8 +108,7 @@ public class AniController extends BaseController {
             // 如果未开启订阅则只获取一下集数
             ThreadUtil.execute(() -> {
                 try {
-                    List<Item> items = ItemsUtil.getItems(ani);
-                    int currentEpisodeNumber = ItemsUtil.currentEpisodeNumber(ani, items);
+                    int currentEpisodeNumber = ItemsUtil.currentEpisodeNumber(ani);
                     ani.setCurrentEpisodeNumber(currentEpisodeNumber);
                 } catch (Exception e) {
                     log.error(ExceptionUtils.getMessage(e), e);

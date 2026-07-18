@@ -19,6 +19,10 @@ import java.util.List;
 @Accessors(chain = true)
 @Schema(description = "订阅")
 public class Ani implements Serializable {
+    public static final String OFFSET_SCOPE_RENAME = "RENAME";
+    public static final String OFFSET_SCOPE_EPISODE = "EPISODE";
+    public static final String OFFSET_SCOPE_BOTH = "BOTH";
+
     /**
      * id
      */
@@ -62,6 +66,12 @@ public class Ani implements Serializable {
      */
     @Schema(description = "剧集偏移")
     private Integer offset;
+
+    /**
+     * 剧集偏移作用范围
+     */
+    @Schema(description = "剧集偏移作用范围")
+    private String offsetScope;
 
     /**
      * 发布日期

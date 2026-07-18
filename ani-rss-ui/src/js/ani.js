@@ -5,6 +5,7 @@ export let aniData = {
     "standbyRssList": [],
     "title": "",
     "offset": 0,
+    "offsetScope": "BOTH",
     "releaseDate": "2026-01-01",
     "week": 2,
     "season": 1,

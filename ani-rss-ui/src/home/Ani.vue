@@ -143,6 +143,17 @@
             <el-input-number v-model:model-value="props.ani.offset" :disabled="props.ani.ova"/>
           </div>
         </el-form-item>
+        <el-form-item label="偏移作用">
+          <div class="form-item-flex">
+            <el-radio-group :disabled="props.ani.ova"
+                            :model-value="props.ani.offsetScope || 'BOTH'"
+                            @update:model-value="value => props.ani.offsetScope = value">
+              <el-radio-button label="BOTH">全部</el-radio-button>
+              <el-radio-button label="RENAME">仅文件</el-radio-button>
+              <el-radio-button label="EPISODE">仅episode</el-radio-button>
+            </el-radio-group>
+          </div>
+        </el-form-item>
         <el-form-item label="总集数">
           <div class="form-item-flex">
             <el-input-number v-model:model-value="props.ani.totalEpisodeNumber"/>
